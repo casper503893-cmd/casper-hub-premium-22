@@ -1,7 +1,18 @@
 --[[
-  CASPER HUB PREMIUM — v15.3
+  CASPER HUB PREMIUM — v15.4
   Móvil/PC + Delta/Xeno.
 
+  v15.4:
+   · fix blades: los segmentos del loadout mandan, allBroken() solo como respaldo
+   · histéresis de 0.35 s antes de viajar: ya no se va a recargar con 2/3
+   · Auto Reload R solo también va a estación cuando no quedan repuestos
+   · Clear Wave y Auto M1 ya no registran doble: uno ataca, el otro calla
+   · el objetivo atascado caduca de verdad (antes el skip quedaba anulado)
+   · Clear Wave golpea al más cercano si no hay nadie en rango (no se queda parado)
+   · refill en wave: el R rápido corre primero y la estación tiene respaldo
+   · fix: el atajo WAVES/CREATE/START ya no se queda esperando a estar en partida
+   · fix: las hotkeys guardadas se muestran en su dropdown
+   · fix: SpearStuck solo cuenta si de verdad se están usando spears
   v15.3:
    · Auto M1 arranca en modo Remoto: golpea sin tocar la pantalla (como Auto Skill)
    · Auto Click activa RETRY por señales también en móvil, sin navegación de UI
@@ -341,6 +352,13 @@ Config.M1Delay = math.clamp(tonumber(Config.M1Delay) or 120, 40, 1000)
 Config.M1PosX = math.clamp(tonumber(Config.M1PosX) or 50, 2, 98)
 Config.M1PosY = math.clamp(tonumber(Config.M1PosY) or 70, 2, 98)
 Config.M1Hold = math.clamp(tonumber(Config.M1Hold) or 40, 10, 400)
+Config.ClearWaveRange = math.clamp(tonumber(Config.ClearWaveRange) or 300, 50, 2000)
+Config.HitCount = math.clamp(tonumber(Config.HitCount) or 5, 1, 15)
+Config.DamageMult = math.clamp(tonumber(Config.DamageMult) or 10, 1, 20)
+-- guardas: un config guardado viejo puede traer estas tablas vacías o nil
+if type(Config.Favorites) ~= "table" then Config.Favorites = {} end
+if type(Config.Hotkeys) ~= "table" then Config.Hotkeys = {} end
+if type(Config.RaidModifiers) ~= "table" then Config.RaidModifiers = {} end
 if Config.M1Mode ~= "Remoto" and Config.M1Mode ~= "Toque" and Config.M1Mode ~= "Toque + Remoto" then
     Config.M1Mode = "Remoto"
 end
@@ -419,6 +437,11 @@ local function pushLog(title, message)
 end
 
 local CHANGELOG = {
+    "15.4 · fix blades: los segmentos mandan y la recarga tiene histéresis (ya no viaja con 2/3)",
+    "15.4 · fix recarga: Auto Reload R solo también va a estación al quedarse sin repuestos",
+    "15.4 · fix atascos: Clear Wave y Auto M1 no registran doble y el objetivo atascado caduca de verdad",
+    "15.4 · Clear Wave golpea al más cercano si no hay nadie en rango",
+    "15.4 · fix atajo WAVES/CREATE/START fuera de partida, hotkeys visibles y SpearStuck más fiable",
     "15.3 · Auto M1 arranca en Remoto (sin tocar la pantalla) y Auto Click usa señales en móvil",
     "15.2 · Auto M1 / Auto Touch para PC y móvil, integrado con el farm",
     "15.1 · vuelve el movimiento de farm de v14.9 y la altura por defecto sube a 170 (rango 250)",
@@ -461,7 +484,7 @@ local function buildLoader()
     local monogram = new("TextLabel", { Text = "C", Font = Enum.Font.GothamBlack, TextSize = 19, TextColor3 = Color3.new(1, 1, 1), TextTransparency = 1, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = logo })
 
     local title = new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 17, TextColor3 = Color3.fromRGB(245, 247, 255), TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 74), Size = UDim2.new(1, 0, 0, 20), ZIndex = 4, Parent = card })
-    local sub = new("TextLabel", { Text = "PREMIUM · v15.3", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
+    local sub = new("TextLabel", { Text = "PREMIUM · v15.4", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
 
     local stepLabel = new("TextLabel", { Text = "Iniciando", Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = Color3.fromRGB(150, 158, 184), TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, Position = UDim2.fromOffset(22, 122), Size = UDim2.new(1, -100, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4, Parent = card })
     local percentLabel = new("TextLabel", { Text = "0%", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = accent, TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1, Position = UDim2.new(1, -70, 0, 122), Size = UDim2.fromOffset(48, 14), ZIndex = 4, Parent = card })
@@ -521,7 +544,7 @@ if not isKeyVerified then
     local keyGui = new("ScreenGui", { Name = "KeySystem", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = playerGui })
     local kf = new("Frame", { Size = UDim2.fromOffset(340, 268), Position = UDim2.new(0.5, -170, 0.5, -134), BackgroundColor3 = THEME.bg, BorderSizePixel = 0, Parent = keyGui }, { corner(18), new("UIStroke", { Color = THEME.accent, Thickness = 1.5, Transparency = 0.3 }) })
     new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 25, TextColor3 = THEME.text, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 34), Parent = kf })
-    new("TextLabel", { Text = "PREMIUM · v15.3", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
+    new("TextLabel", { Text = "PREMIUM · v15.4", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
     new("TextLabel", { Text = "Introduce tu key de acceso", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = THEME.subtext, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 92), Size = UDim2.new(1, 0, 0, 18), Parent = kf })
     local tb = new("TextBox", { Text = "", PlaceholderText = "CASPER-XXXX", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = THEME.text, BackgroundColor3 = THEME.item, BorderSizePixel = 0, Position = UDim2.fromOffset(24, 124), Size = UDim2.new(1, -48, 0, 42), Parent = kf, ClearTextOnFocus = false }, { corner(10), new("UIStroke", { Color = Color3.fromRGB(50, 50, 70), Thickness = 1, Transparency = 0.3 }) })
     local sl = new("TextLabel", { Text = "", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Color3.fromRGB(255, 90, 90), BackgroundTransparency = 1, Position = UDim2.fromOffset(24, 174), Size = UDim2.new(1, -48, 0, 20), Parent = kf })
@@ -841,7 +864,7 @@ local function buildShell(S)
     ui.chipText = H.label(ui.chipHolder, "micro", "—", { Position = UDim2.fromOffset(19, 0), Size = UDim2.fromOffset(80, 20), TextColor3 = V.sub, ZIndex = 9 })
 
     local verBadge = new("Frame", { Size = UDim2.fromOffset(46, 18), Position = UDim2.fromOffset(186, 45), BackgroundColor3 = THEME.accent, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(9) }); H.bindAccent(verBadge, "BackgroundColor3")
-    H.label(verBadge, "micro", "v15.3", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
+    H.label(verBadge, "micro", "v15.4", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
 
     local profile = new("Frame", { Size = UDim2.fromOffset(184, 40), Position = UDim2.new(1, -318, 0.5, -20), BackgroundColor3 = V.card, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(20) })
     H.stroke(profile, V.strokeHi, 1, 0.5)
@@ -1117,7 +1140,7 @@ end
 local function buildRuntime(S)
     local H = S.H
     S.Farm = { Refilling = false, ReloadRejects = 0, ReloadSettleUntil = 0, BladesEmptyFor = 0, ActorSegments = nil, ActorReloads = nil, ActorActive = nil, SpearStuck = false, RecentlyRefilled = 0, LootBusy = false,
-        QuickReload = false, QuickFailed = 0, HoverPos = nil, QuickTries = 0, LockKind = nil, LockUntil = 0, LastRefillEnd = 0, LastAttackError = nil, NoRefills = false, MissStreak = 0,
+        QuickReload = false, QuickFailed = 0, HoverPos = nil, QuickTries = 0, LockKind = nil, LockUntil = 0, LastRefillEnd = 0, LastAttackError = nil, NoRefills = false, MissStreak = 0, NoStation = false,
         HardMove = false, ZeroSince = 0, CruiseY = nil, LiveAlt = nil, StuckTitan = nil, StuckUntil = 0 }
     local Farm = S.Farm
     local RT = S.RT
@@ -1477,10 +1500,13 @@ local function buildRuntime(S)
         return seg
     end
 
+    -- Los segmentos del loadout son la fuente fiable. allBroken() marca "rota" en
+    -- cuanto la parte equipada se gasta aunque queden 2 o 3 blades útiles, y eso
+    -- disparaba viajes a la estación sin necesidad.
     RT.bladesEmpty = function()
-        if allBroken() then return true end
         local seg = RT.bladeCount()
-        return seg ~= nil and seg <= 0
+        if seg ~= nil then return seg <= 0 end
+        return allBroken()
     end
 
     RT.spearsLeft = function()
@@ -1513,16 +1539,32 @@ local function buildRuntime(S)
         return left
     end
 
+    -- ¿Tiene sentido intentar el R rápido ahora mismo?
+    local function canQuickReload()
+        if not (Config.AutoReloadR or Config.AutoRefillBlade) then return false end
+        if os.clock() < (Farm.QuickFailed or 0) then return false end
+        local sp = spareLeft()
+        if sp ~= nil then return sp > 0 end
+        return (Farm.BladesEmptyFor or 0) >= 0.8
+    end
+
+    -- Solo se pide estación cuando el R rápido ya no puede resolverlo. La
+    -- histéresis de 0.35 s evita que un frame a medio romper dispare el viaje.
     local function needBladeRaw()
         if not RT.bladesEmpty() then return false end
+        if (Farm.BladesEmptyFor or 0) < 0.35 then return false end
+        if canQuickReload() then return false end
         local sp = spareLeft()
         if sp == 0 then return true end
         -- si el R rápido ya falló, cae a la estación
         if os.clock() < (Farm.QuickFailed or 0) then return true end
         if sp == nil then return (Farm.ReloadRejects or 0) >= 2 or (Farm.BladesEmptyFor or 0) >= 5 end
-        return false
+        return true
     end
-    local function needBlade() return Config.AutoRefillBlade and needBladeRaw() end
+    -- Con Auto Reload R solo (sin Auto Refill Blades) también se va a la estación
+    -- al quedarse sin repuestos; antes se quedaba pulsando R para siempre.
+    local function needBlade() return (Config.AutoRefillBlade or Config.AutoReloadR) and needBladeRaw() end
+
     local function needThunderRaw()
         local n = RT.spearsLeft()
         if n ~= nil and n <= 0 then return true end
@@ -1697,6 +1739,7 @@ local function buildRuntime(S)
         Farm.ReloadRejects = 0
         Farm.ReloadSettleUntil = os.clock() + 3
         Farm.ZeroSince = 0
+        Farm.QuickFailed = 0
     end
 
     -- Bloqueo de refill con caducidad: evita que un flag se quede pegado
@@ -1758,7 +1801,6 @@ local function buildRuntime(S)
         end)
         RT.unlockRefill()
         if ok then
-            Farm.QuickFailed = 0
             markRefilled()
         else
             S.notify("Refill", "R no respondió, yendo a estación", 3)
@@ -1842,7 +1884,14 @@ local function buildRuntime(S)
             local root = getRoot()
             if not root then break end
             local station = nearestStation(root)
-            if not station then break end
+            if not station then
+                if not Farm.NoStation then
+                    Farm.NoStation = true
+                    S.notify("Refill", "No encuentro estación en este mapa", 3)
+                end
+                break
+            end
+            Farm.NoStation = false
             if tryStationReload(station, Config.RefillSpeed) then
                 markRefilled()
                 return true
@@ -1879,6 +1928,8 @@ local function buildRuntime(S)
                 if d < bestD then station, bestD = st, d end
             end
         end
+        -- si el folder de la oleada no trae estaciones, se usa el buscador general
+        if not station then station = nearestStation(root) end
         if not station then return false end
         local before = RT.refillsLeft()
         for _ = 1, 3 do
@@ -1949,6 +2000,7 @@ local function buildRuntime(S)
         if createdRoom and createdRoom.Parent ~= nil then return true end
         return myRoomObject() ~= nil
     end
+    RT.hasRoom = hasRoom
     local function roomDifficulty(room)
         if typeof(room) ~= "Instance" then return nil end
         local okV, value = pcall(function() return room.Value end)
@@ -1993,6 +2045,7 @@ local function buildRuntime(S)
         end
         createdRoom = (typeof(r) == "Instance") and r or createdRoom
         local picked = {}
+        Config.RaidModifiers = Config.RaidModifiers or {}
         for _, name in ipairs(RAID_MODIFIER_OPTIONS) do
             if table.find(Config.RaidModifiers, name) then picked[#picked + 1] = name end
         end
@@ -2270,10 +2323,15 @@ local function buildRuntime(S)
                 if RT.refillBusy() then setClear("Pausado (recarga)") return end
                 local root = getRoot()
                 if not root then setClear("Esperando personaje") return end
-                local range = math.clamp(tonumber(Config.ClearWaveRange) or 300, 50, 2000)
+                local range = Config.MassiveAttack and math.huge
+                    or math.clamp(tonumber(Config.ClearWaveRange) or 300, 50, 2000)
                 local list, alive = napesInRange(root, range)
+                if #list == 0 and (alive or 0) > 0 then
+                    -- nada en rango: se golpea igual al más cercano para no quedarse parado
+                    list, alive = napesInRange(root, math.huge)
+                end
                 if #list == 0 then
-                    setClear((alive or 0) == 0 and "Sin titanes vivos" or ("Sin titanes en rango (%d vivos)"):format(alive))
+                    setClear("Sin titanes vivos")
                     return
                 end
                 local cap = math.max(1, tonumber(Config.HitCount) or 1)
@@ -2570,18 +2628,24 @@ local function buildRuntime(S)
 
     -- Auto M1: mantiene el ataque pulsado. En modo Remoto no toca la pantalla.
     -- Mientras está ON, el farm no ataca por su cuenta (evita registros dobles)
-    -- y el objetivo atascado se salta aquí.
+    -- y el objetivo atascado se salta aquí. Si Clear Wave está activo, manda él.
     RT.m1Loop = function()
         task.wait(2.5)
         local lastTap, lastSlash, missStreak = 0, 0, 0
         while S.ui.gui and S.ui.gui.Parent do
             task.wait(0.02)
-            local armed = Config.AutoM1 and CanUseHere() and not Farm.LootBusy and not RT.refillBusy()
+            local clearOwns = Config.AutoClearWave and Config.AutoPlay
+            local armed = Config.AutoM1 and CanUseHere() and not Farm.LootBusy
+                and not RT.refillBusy() and not clearOwns
             local root = armed and getRoot() or nil
             if not root then
                 missStreak = 0
             else
-                local skip = (os.clock() < (Farm.StuckUntil or 0)) and Farm.StuckTitan or nil
+                -- el enfriamiento del objetivo atascado caduca de verdad
+                if Farm.StuckUntil and os.clock() >= Farm.StuckUntil then
+                    Farm.StuckTitan, Farm.StuckUntil, missStreak = nil, 0, 0
+                end
+                local skip = Farm.StuckTitan
                 local titan = getTitan(skip) or getTitan(nil)
                 local nape = titan and napeOf(titan)
                 local limit = Config.MassiveAttack and math.huge
@@ -2601,7 +2665,6 @@ local function buildRuntime(S)
                                 if missStreak >= STUCK_LIMIT then
                                     Farm.StuckUntil = os.clock() + STUCK_COOLDOWN
                                     missStreak = 0
-                                    Farm.StuckTitan = nil
                                 end
                             else
                                 Farm.StuckTitan, missStreak = titan, 0
@@ -2655,8 +2718,11 @@ local function buildRuntime(S)
                     end
                 elseif Config.AutoFarm and not Farm.LootBusy then
                     refillHold = nil
+                    if Farm.StuckUntil and os.clock() >= Farm.StuckUntil then
+                        Farm.StuckTitan, Farm.StuckUntil, Farm.MissStreak = nil, 0, 0
+                    end
                     -- si el objetivo actual no muere, se le deja enfriar y se busca otro
-                    local skip = (os.clock() < (Farm.StuckUntil or 0)) and Farm.StuckTitan or nil
+                    local skip = Farm.StuckTitan
                     local titan = getTitan(skip) or getTitan(nil)
                     local nape = titan and napeOf(titan)
                     local standoff = math.clamp(tonumber(Config.FlyHeight) or 170, STANDOFF_MIN, STANDOFF_MAX)
@@ -2689,8 +2755,9 @@ local function buildRuntime(S)
                         hoverTo(root, targetPos, dt, speed)
                     end
 
-                    -- con Auto M1 encendido el ataque lo lleva su propio bucle
-                    if not Config.AutoM1 and not attacking and os.clock() - lastAttack >= ATTACK_GAP then
+                    -- con Auto M1 o Clear Wave encendidos el ataque lo lleva su bucle
+                    local clearOwns = Config.AutoClearWave and Config.AutoPlay
+                    if not Config.AutoM1 and not clearOwns and not attacking and os.clock() - lastAttack >= ATTACK_GAP then
                         lastAttack = os.clock()
                         local range = Config.MassiveAttack and nil
                             or math.clamp(tonumber(Config.AttackRange) or 2000, 100, 6000)
@@ -2847,13 +2914,11 @@ local function buildRuntime(S)
         while S.ui.gui and S.ui.gui.Parent do
             task.wait(0.35)
             local ok, err = pcall(function()
-                -- Recarga automática al llegar a 0 blades con repuestos.
-                if (Config.AutoReloadR or Config.AutoRefillBlade) and CanUseHere() and not Farm.LootBusy
-                    and not RT.refillBusy()
-                    and os.clock() >= (Farm.QuickFailed or 0) and RT.bladesEmpty() then
-                    local sp = spareLeft()
-                    local quick = (sp ~= nil and sp > 0) or (sp == nil and (Farm.BladesEmptyFor or 0) >= 0.8)
-                    if quick then
+                local allowed = Config.AutoReloadR or Config.AutoRefillBlade
+                -- 1) Recarga rápida con R. Va primero y también en modo wave,
+                --    porque el camino de estación de abajo se cede a waveLoop.
+                if allowed and CanUseHere() and not Farm.LootBusy and not RT.refillBusy() and RT.bladesEmpty() then
+                    if (Farm.BladesEmptyFor or 0) >= 0.35 and canQuickReload() then
                         local wait = math.max(0.8, (tonumber(Config.RefillCooldown) or 5) * 0.4)
                         if os.clock() - lastRefill >= wait then
                             local okQ = quickBladeReload()
@@ -2866,8 +2931,8 @@ local function buildRuntime(S)
                 end
                 if RT.refillBusy() then since = nil return end
                 local isWaveMode = Config.AutoRefillWave and waveFolder() ~= nil
-                local needs = needBlade() or needThunder()
                 if isWaveMode then since = nil return end
+                local needs = (allowed and needBladeRaw()) or needThunder()
                 if not (CanUseHere() and needs) then
                     since = nil
                     return
@@ -2916,7 +2981,7 @@ local function buildRuntime(S)
 
     RT.waveLoop = function()
         task.wait(3)
-        local since, lastWave, failStreak = nil, -999, 0
+        local since, nextAt, failStreak = nil, 0, 0
         while S.ui.gui and S.ui.gui.Parent do
             task.wait(0.4)
             local ok, err = pcall(function()
@@ -2926,22 +2991,22 @@ local function buildRuntime(S)
                 if not waveNeed() then since = nil failStreak = 0 return end
                 since = since or os.clock()
                 if os.clock() - since < 1.0 then return end
-                if os.clock() - lastWave < 10 then return end
+                if os.clock() < nextAt then return end
                 RT.lockRefill("wave", 60)
                 local okW = doWaveRefill()
                 RT.unlockRefill()
                 if okW then
-                    failStreak = 0; lastWave = os.clock(); since = nil
+                    failStreak = 0; nextAt = os.clock() + 10; since = nil
                 else
                     failStreak += 1
-                    if failStreak >= 3 then lastWave = os.clock() + 20 failStreak = 0
-                    else lastWave = os.clock() - 7 end
+                    if failStreak >= 3 then nextAt = os.clock() + 20 failStreak = 0
+                    else nextAt = os.clock() + 3 end
                     since = os.clock() - 1.5
                 end
             end)
             if not ok then
                 RT.unlockRefill()
-                lastWave = os.clock() - 7
+                nextAt = os.clock() + 3
                 warn("[Casper][WaveRefill] error:", err)
                 task.wait(1)
             end
@@ -2950,6 +3015,7 @@ local function buildRuntime(S)
 
     RT.watchLoop = function()
         local emptyStart, wasEmpty, lastSpears, stuck = nil, false, nil, 0
+        local acc = 0
         while S.ui.gui and S.ui.gui.Parent do
             task.wait(0.1)
             if not Alive() then break end
@@ -2965,21 +3031,29 @@ local function buildRuntime(S)
                 Farm.ReloadRejects = 0
             end
             wasEmpty = empty
-            if os.clock() % 1 < 0.1 then
+            acc += 0.1
+            if acc >= 1 then
+                acc = 0
                 -- watchdog de bloqueos: si algo se quedó pegado, lo libera
                 if Farm.LockKind and os.clock() > (Farm.LockUntil or 0) then
                     pcall(RT.refillBusy)
                 end
+                -- el enfriamiento del objetivo atascado caduca aunque no haya farm
+                if Farm.StuckUntil and os.clock() >= Farm.StuckUntil then
+                    Farm.StuckTitan, Farm.StuckUntil, Farm.MissStreak = nil, 0, 0
+                end
                 local n = RT.spearsLeft()
                 local recently = os.clock() < (Farm.RecentlyRefilled or 0)
+                local usingSpears = Config.AutoSkill and (Config.AutoFarm or Config.AutoClearWave) and not RT.refillBusy()
                 if n == nil then
                     Farm.SpearStuck = false; lastSpears = nil; stuck = 0
                 elseif n <= 0 then
                     Farm.SpearStuck = true; lastSpears = n; stuck = 0
                 else
-                    if (Config.AutoFarm or Config.AutoClearWave) and lastSpears == n and not recently then
+                    -- solo cuenta si de verdad se están usando (Auto Skill)
+                    if usingSpears and lastSpears == n and not recently then
                         stuck += 1
-                        Farm.SpearStuck = stuck >= 8
+                        Farm.SpearStuck = stuck >= 10
                     else
                         stuck = 0; Farm.SpearStuck = false
                     end
@@ -3232,6 +3306,7 @@ local function buildRuntime(S)
         RT.noclipOff()
         Farm.NoRefills = false
         Farm.MissStreak = 0
+        Farm.StuckTitan, Farm.StuckUntil = nil, 0
         pcall(function() GuiService.SelectedObject = nil end)
         S.notify("Pánico", "Todas las features apagadas", 2)
     end
@@ -4007,6 +4082,7 @@ local function buildTabs(S)
                 " · Lock: " .. tostring(S.Farm.LockKind) ..
                 " · Quedan: " .. string.format("%.1f", (S.Farm.LockUntil or 0) - os.clock()) ..
                 " · Quick: " .. tostring(S.Farm.QuickReload) ..
+                " · QuickFail: " .. string.format("%.1f", (S.Farm.QuickFailed or 0) - os.clock()) ..
                 " · HardMove: " .. tostring(S.Farm.HardMove) ..
                 " · CruiseY: " .. tostring(S.Farm.CruiseY and string.format("%.0f", S.Farm.CruiseY) or "n/d") ..
                 " · CeroDesde: " .. string.format("%.1f", os.clock() - (S.Farm.ZeroSince or 0)) ..
@@ -4270,6 +4346,12 @@ local function buildTabs(S)
             { key = "AutoRetry", name = "Auto Click" },
             { key = "AutoM1", name = "Auto M1" },
         }
+        -- las hotkeys guardadas se reflejan en su dropdown al abrir el tab
+        Config.Hotkeys = Config.Hotkeys or {}
+        for _, f in ipairs(HOT_FEATURES) do
+            local cur = Config.Hotkeys[f.key]
+            Config["_hk_" .. f.key] = (type(cur) == "string" and cur ~= "") and cur or "—"
+        end
         for _, f in ipairs(HOT_FEATURES) do
             api.Dropdown(f.name, HOT_OPTIONS, "_hk_" .. f.key, function(option)
                 local value = option == "—" and "" or option
@@ -4284,6 +4366,7 @@ local function buildTabs(S)
         end
         api.Button("Borrar todas las hotkeys", function()
             Config.Hotkeys = {}
+            for _, f in ipairs(HOT_FEATURES) do Config["_hk_" .. f.key] = "—" end
             S.buildPage(tabByName["Ajustes"])
             S.notify("Hotkeys", "Borradas", 2)
         end)
@@ -4501,9 +4584,11 @@ local function boot(S)
                 local r = getRoot()
                 local n = RT.nearestNape()
                 if r and n then
-                    S.altRef.set(("%d / %d"):format(math.floor(r.Position.Y - n.Position.Y + 0.5), Config.FlyHeight))
+                    S.altRef.set(("%d / %d"):format(
+                        math.floor(r.Position.Y - n.Position.Y + 0.5),
+                        math.floor(tonumber(Config.FlyHeight) or 0)))
                 else
-                    S.altRef.set("— / " .. tostring(Config.FlyHeight))
+                    S.altRef.set("— / " .. tostring(math.floor(tonumber(Config.FlyHeight) or 0)))
                 end
             end
         end
@@ -4531,10 +4616,15 @@ local function boot(S)
         task.wait(0.4)
         while ui.gui and ui.gui.Parent do
             task.wait(2)
-            if Config.AutoCreateWave and Config.AutoPlay and CanUseHere() then
-                RT.pressButtonByName("WAVES"); task.wait(1)
-                RT.pressButtonByName("CREATE"); task.wait(1)
-                RT.pressButtonByName("START")
+            -- el tablero de misiones vive en el lobby y en el menú, no en partida
+            if Config.AutoCreateWave and Config.AutoPlay and (ON_LOBBY_PLACE or IN_MENU) then
+                if not RT.hasRoom() then
+                    RT.pressButtonByName("WAVES"); task.wait(1)
+                    RT.pressButtonByName("CREATE"); task.wait(1)
+                end
+                if RT.hasRoom() and Config.AutoStartWave then
+                    RT.pressButtonByName("START")
+                end
             end
         end
     end)
@@ -4564,8 +4654,8 @@ local function boot(S)
     if startTab then S.selectTab(startTab) end
     if S.syncMobile then S.syncMobile() end
 
-    S.notify("CASPER HUB PREMIUM v15.3", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
-    print("[CASPER HUB PREMIUM v15.3] Cargado con éxito.")
+    S.notify("CASPER HUB PREMIUM v15.4", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
+    print("[CASPER HUB PREMIUM v15.4] Cargado con éxito.")
 end
 
 -- ============================================================
