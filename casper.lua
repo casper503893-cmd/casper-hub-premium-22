@@ -1,7 +1,11 @@
 --[[
-  CASPER HUB PREMIUM — v15.8
+  CASPER HUB PREMIUM — v15.9
   Móvil/PC + Delta/Xeno.
 
+  v15.9:
+   · fix crash: clickGui y activateGui aceptan labels (suben al botón padre o pulsan por posición)
+   · fix crash: findRetryButton ya no devuelve un TextLabel suelto, resuelve el GuiButton
+   · RETRY, votos, SKIP, cofres y atajos ya no revientan cuando el juego usa texto en vez de botón
   v15.8:
    · móvil: la recarga pulsa el botón REFILL de la pantalla (la R no existe sin teclado)
    · móvil: Auto Skill pulsa los botones TAP y Auto M1 el botón M1 real
@@ -400,13 +404,25 @@ local function tween(obj, time, props) TweenService:Create(obj, TweenInfo.new(ti
 local function getRoot() local c = player.Character return c and c:FindFirstChild("HumanoidRootPart") end
 local function Alive() return player and player.Parent ~= nil end
 
--- Un solo click lógico: una sola señal, la que exista. Antes se disparaban
--- cuatro seguidas y los botones con dos handlers registraban doble.
+-- Un solo click lógico: una sola señal, la que exista. Acepta cualquier
+-- GuiObject: si no es botón, sube al primer GuiButton padre y, si no hay,
+-- pulsa por posición. Leer MouseButton1Click en un TextLabel a pelo lanzaba
+-- "MouseButton1Click is not a valid member of TextLabel" y tumbaba el script.
 local function clickGui(obj)
     if not obj or not obj.Parent then return false end
-    local sig = obj.MouseButton1Click or obj.Activated or obj.MouseButton1Down
-    if sig and type(firesignal) == "function" then
-        if pcall(firesignal, sig) then return true end
+    if not obj:IsA("GuiButton") then
+        local p = obj.Parent
+        for _ = 1, 6 do
+            if not p or p == playerGui then break end
+            if p:IsA("GuiButton") then obj = p break end
+            p = p.Parent
+        end
+    end
+    if obj:IsA("GuiButton") then
+        local sig = obj.MouseButton1Click or obj.Activated or obj.MouseButton1Down
+        if sig and type(firesignal) == "function" then
+            if pcall(firesignal, sig) then return true end
+        end
     end
     pcall(function()
         local pos = obj.AbsolutePosition + obj.AbsoluteSize / 2
@@ -456,6 +472,9 @@ local function pushLog(title, message)
 end
 
 local CHANGELOG = {
+    "15.9 · fix crash: clickGui y activateGui aceptan labels (suben al botón padre o pulsan por posición)",
+    "15.9 · fix crash: findRetryButton ya no devuelve un TextLabel suelto, resuelve el GuiButton",
+    "15.9 · RETRY, votos, SKIP, cofres y atajos ya no revientan cuando el juego usa texto en vez de botón",
     "15.8 · móvil: la recarga pulsa el botón REFILL de la pantalla (la R no existe sin teclado)",
     "15.8 · móvil: Auto Skill pulsa los botones TAP y Auto M1 el botón M1 real",
     "15.8 · recarga: segundo intento, espera más larga en móvil y respaldo por posición ajustable",
@@ -466,6 +485,7 @@ local CHANGELOG = {
     "15.7 · recorrido adelante/atrás mucho más largo: amplitud hasta 400 y factor propio en ese patrón",
     "15.7 · pasadas más lentas para que el trayecto completo se recorra de verdad",
     "15.6 · movimiento de farm con recorridos largos: adelante/atrás por defecto",
+    "15.6 · el vaivén largo va más lento para que sean pasadas de verdad, no temblores",
     "15.5 · Auto Farm ya no se queda clavado sobre la nuca: zigzag, lado a lado o adelante/atrás",
     "15.5 · amplitud y velocidad del vaivén ajustables, con seguimiento amortiguado",
     "15.4 · fix blades: los segmentos mandan y la recarga tiene histéresis (ya no viaja con 2/3)",
@@ -515,7 +535,7 @@ local function buildLoader()
     local monogram = new("TextLabel", { Text = "C", Font = Enum.Font.GothamBlack, TextSize = 19, TextColor3 = Color3.new(1, 1, 1), TextTransparency = 1, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = logo })
 
     local title = new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 17, TextColor3 = Color3.fromRGB(245, 247, 255), TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 74), Size = UDim2.new(1, 0, 0, 20), ZIndex = 4, Parent = card })
-    local sub = new("TextLabel", { Text = "PREMIUM · v15.8", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
+    local sub = new("TextLabel", { Text = "PREMIUM · v15.9", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
 
     local stepLabel = new("TextLabel", { Text = "Iniciando", Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = Color3.fromRGB(150, 158, 184), TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, Position = UDim2.fromOffset(22, 122), Size = UDim2.new(1, -100, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4, Parent = card })
     local percentLabel = new("TextLabel", { Text = "0%", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = accent, TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1, Position = UDim2.new(1, -70, 0, 122), Size = UDim2.fromOffset(48, 14), ZIndex = 4, Parent = card })
@@ -575,7 +595,7 @@ if not isKeyVerified then
     local keyGui = new("ScreenGui", { Name = "KeySystem", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = playerGui })
     local kf = new("Frame", { Size = UDim2.fromOffset(340, 268), Position = UDim2.new(0.5, -170, 0.5, -134), BackgroundColor3 = THEME.bg, BorderSizePixel = 0, Parent = keyGui }, { corner(18), new("UIStroke", { Color = THEME.accent, Thickness = 1.5, Transparency = 0.3 }) })
     new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 25, TextColor3 = THEME.text, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 34), Parent = kf })
-    new("TextLabel", { Text = "PREMIUM · v15.8", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
+    new("TextLabel", { Text = "PREMIUM · v15.9", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
     new("TextLabel", { Text = "Introduce tu key de acceso", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = THEME.subtext, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 92), Size = UDim2.new(1, 0, 0, 18), Parent = kf })
     local tb = new("TextBox", { Text = "", PlaceholderText = "CASPER-XXXX", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = THEME.text, BackgroundColor3 = THEME.item, BorderSizePixel = 0, Position = UDim2.fromOffset(24, 124), Size = UDim2.new(1, -48, 0, 42), Parent = kf, ClearTextOnFocus = false }, { corner(10), new("UIStroke", { Color = Color3.fromRGB(50, 50, 70), Thickness = 1, Transparency = 0.3 }) })
     local sl = new("TextLabel", { Text = "", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Color3.fromRGB(255, 90, 90), BackgroundTransparency = 1, Position = UDim2.fromOffset(24, 174), Size = UDim2.new(1, -48, 0, 20), Parent = kf })
@@ -895,7 +915,7 @@ local function buildShell(S)
     ui.chipText = H.label(ui.chipHolder, "micro", "—", { Position = UDim2.fromOffset(19, 0), Size = UDim2.fromOffset(80, 20), TextColor3 = V.sub, ZIndex = 9 })
 
     local verBadge = new("Frame", { Size = UDim2.fromOffset(46, 18), Position = UDim2.fromOffset(186, 45), BackgroundColor3 = THEME.accent, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(9) }); H.bindAccent(verBadge, "BackgroundColor3")
-    H.label(verBadge, "micro", "v15.8", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
+    H.label(verBadge, "micro", "v15.9", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
 
     local profile = new("Frame", { Size = UDim2.fromOffset(184, 40), Position = UDim2.new(1, -318, 0.5, -20), BackgroundColor3 = V.card, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(20) })
     H.stroke(profile, V.strokeHi, 1, 0.5)
@@ -1272,9 +1292,19 @@ local function buildRuntime(S)
     end
 
     -- Activación de un botón sin tocar la pantalla: una sola señal.
-    -- En móvil, si no hay firesignal, toque real sobre el centro del botón.
+    -- Si le llega un label (findRetryButton puede devolver texto suelto),
+    -- se sube al GuiButton padre y, si no hay, se pulsa por posición.
     RT.activateGui = function(btn)
         if not btn or not btn.Parent then return false end
+        if not btn:IsA("GuiButton") then
+            local p = btn.Parent
+            for _ = 1, 6 do
+                if not p or p == playerGui then break end
+                if p:IsA("GuiButton") then btn = p break end
+                p = p.Parent
+            end
+        end
+        if not btn:IsA("GuiButton") then return RT.clickIn(btn, 50) end
         local sig = btn.MouseButton1Click or btn.Activated or btn.MouseButton1Down
         if sig and type(firesignal) == "function" then
             if pcall(firesignal, sig) then return true end
@@ -2959,21 +2989,20 @@ local function buildRuntime(S)
         return n
     end
 
+    -- Devuelve siempre un GuiButton si existe; si el juego deja el texto suelto
+    -- sin botón padre, devuelve el label y activateGui lo pulsa por posición.
     local function findRetryButton()
         for _, g in ipairs(playerGui:GetDescendants()) do
             if g:IsA("TextLabel") or g:IsA("TextButton") then
                 local text = string.upper(g.Text or "")
                 if (text:match("^REINTENTAR") or text:match("^RETRY")) and isShown(g) then
-                    local btn = g
-                    if g:IsA("TextLabel") then
-                        local p = g.Parent
-                        for _ = 1, 4 do
-                            if not p or p == playerGui then break end
-                            if p:IsA("GuiButton") then btn = p break end
-                            p = p.Parent
-                        end
+                    if g:IsA("GuiButton") then return g end
+                    local p = g.Parent
+                    for _ = 1, 6 do
+                        if not p or p == playerGui then break end
+                        if p:IsA("GuiButton") then return p end
+                        p = p.Parent
                     end
-                    if btn and btn:IsA("GuiButton") then return btn end
                     return g
                 end
             end
@@ -4890,8 +4919,8 @@ local function boot(S)
     if startTab then S.selectTab(startTab) end
     if S.syncMobile then S.syncMobile() end
 
-    S.notify("CASPER HUB PREMIUM v15.8", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
-    print("[CASPER HUB PREMIUM v15.8] Cargado con éxito.")
+    S.notify("CASPER HUB PREMIUM v15.9", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
+    print("[CASPER HUB PREMIUM v15.9] Cargado con éxito.")
 end
 
 -- ============================================================
