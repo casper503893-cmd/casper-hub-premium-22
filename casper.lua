@@ -1,7 +1,14 @@
 --[[
-  CASPER HUB PREMIUM — v15.9
+  CASPER HUB PREMIUM — v15.10
   Móvil/PC + Delta/Xeno.
 
+  v15.10:
+   · fix móvil: la recarga salta con 2/3 blades (umbral ajustable 1-3), ya no espera a 0
+   · fix móvil: el botón REFILL se busca por nombre y texto dentro de los labels hijos
+   · fix móvil: el punto de respaldo del REFILL baja al 55% de alto (antes quedaba debajo)
+   · blades: recuento por partes equipadas cuando el actor no está enlazado
+   · se ignora nuestra propia UI al buscar el botón REFILL
+   · el segundo toque de REFILL solo se envía si las blades siguen bajas
   v15.9:
    · fix crash: clickGui y activateGui aceptan labels (suben al botón padre o pulsan por posición)
    · fix crash: findRetryButton ya no devuelve un TextLabel suelto, resuelve el GuiButton
@@ -138,7 +145,7 @@ local Config = {
     FarmStrafe = true, FarmStrafeMode = "Adelante/atrás", FarmStrafeAmp = 150, FarmStrafeSpeedX100 = 50,
     AutoEscape = false, EscapeCooldownX100 = 15, EscapeMinSize = 20, DebugEscape = false,
     AutoRefillBlade = false, AutoRefillThunder = false, AutoRefillWave = false, AutoReloadR = true,
-    RefillCooldown = 5, RefillSpeed = 800, RefillHeight = 3, RefillPosX = 89, RefillPosY = 70, WaveSpeed = 1000,
+    RefillCooldown = 5, RefillSpeed = 800, RefillHeight = 3, RefillPosX = 92, RefillPosY = 55, RefillAtBlades = 2, WaveSpeed = 1000,
     DamageMult = 10, HitCount = 5, AutoRetry = false, MassiveAttack = false, AttackRange = 2000,
     ClickPos = 88, ClickCooldown = 1,
     AutoM1 = true, M1Mode = "Remoto", M1Delay = 120, M1PosX = 50, M1PosY = 70, M1Hold = 40,
@@ -167,8 +174,8 @@ if isMobile then
     Config.FlyHeight = 170
     Config.M1Mode = "Remoto"
     Config.M1Delay = 120
-    Config.RefillPosX = 89
-    Config.RefillPosY = 70
+    Config.RefillPosX = 92
+    Config.RefillPosY = 55
     Config.UIWinW = nil
     Config.UIWinH = nil
 end
@@ -365,8 +372,14 @@ Config.AttackRange = math.clamp(tonumber(Config.AttackRange) or 2000, 100, 6000)
 Config.ClickPos = math.clamp(tonumber(Config.ClickPos) or 88, 20, 100)
 Config.ClickCooldown = math.clamp(tonumber(Config.ClickCooldown) or 1, 1, 10)
 Config.RefillHeight = math.clamp(tonumber(Config.RefillHeight) or 3, 0, 12)
-Config.RefillPosX = math.clamp(tonumber(Config.RefillPosX) or 89, 2, 98)
-Config.RefillPosY = math.clamp(tonumber(Config.RefillPosY) or 70, 2, 98)
+-- migración: 89/70 eran los defaults viejos y caían por debajo del botón REFILL real
+if tonumber(Config.RefillPosX) == 89 and tonumber(Config.RefillPosY) == 70 then
+    Config.RefillPosX = 92
+    Config.RefillPosY = 55
+end
+Config.RefillPosX = math.clamp(tonumber(Config.RefillPosX) or 92, 2, 99)
+Config.RefillPosY = math.clamp(tonumber(Config.RefillPosY) or 55, 2, 98)
+Config.RefillAtBlades = math.clamp(tonumber(Config.RefillAtBlades) or 2, 1, 3)
 Config.M1Delay = math.clamp(tonumber(Config.M1Delay) or 120, 40, 1000)
 Config.M1PosX = math.clamp(tonumber(Config.M1PosX) or 50, 2, 98)
 Config.M1PosY = math.clamp(tonumber(Config.M1PosY) or 70, 2, 98)
@@ -472,6 +485,12 @@ local function pushLog(title, message)
 end
 
 local CHANGELOG = {
+    "15.10 · fix móvil: la recarga salta con 2/3 blades (umbral ajustable), ya no espera a 0",
+    "15.10 · fix móvil: el botón REFILL se localiza por nombre y texto, no solo por texto exacto",
+    "15.10 · fix móvil: el punto de respaldo del REFILL baja al 55% (antes caía debajo del botón)",
+    "15.10 · blades: recuento por partes equipadas si el actor no está enlazado",
+    "15.10 · se descarta nuestra propia UI al buscar el botón REFILL",
+    "15.10 · el segundo toque de REFILL solo se envía si las blades siguen bajas",
     "15.9 · fix crash: clickGui y activateGui aceptan labels (suben al botón padre o pulsan por posición)",
     "15.9 · fix crash: findRetryButton ya no devuelve un TextLabel suelto, resuelve el GuiButton",
     "15.9 · RETRY, votos, SKIP, cofres y atajos ya no revientan cuando el juego usa texto en vez de botón",
@@ -535,7 +554,7 @@ local function buildLoader()
     local monogram = new("TextLabel", { Text = "C", Font = Enum.Font.GothamBlack, TextSize = 19, TextColor3 = Color3.new(1, 1, 1), TextTransparency = 1, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = logo })
 
     local title = new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 17, TextColor3 = Color3.fromRGB(245, 247, 255), TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 74), Size = UDim2.new(1, 0, 0, 20), ZIndex = 4, Parent = card })
-    local sub = new("TextLabel", { Text = "PREMIUM · v15.9", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
+    local sub = new("TextLabel", { Text = "PREMIUM · v15.10", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
 
     local stepLabel = new("TextLabel", { Text = "Iniciando", Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = Color3.fromRGB(150, 158, 184), TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, Position = UDim2.fromOffset(22, 122), Size = UDim2.new(1, -100, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4, Parent = card })
     local percentLabel = new("TextLabel", { Text = "0%", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = accent, TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1, Position = UDim2.new(1, -70, 0, 122), Size = UDim2.fromOffset(48, 14), ZIndex = 4, Parent = card })
@@ -595,7 +614,7 @@ if not isKeyVerified then
     local keyGui = new("ScreenGui", { Name = "KeySystem", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = playerGui })
     local kf = new("Frame", { Size = UDim2.fromOffset(340, 268), Position = UDim2.new(0.5, -170, 0.5, -134), BackgroundColor3 = THEME.bg, BorderSizePixel = 0, Parent = keyGui }, { corner(18), new("UIStroke", { Color = THEME.accent, Thickness = 1.5, Transparency = 0.3 }) })
     new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 25, TextColor3 = THEME.text, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 34), Parent = kf })
-    new("TextLabel", { Text = "PREMIUM · v15.9", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
+    new("TextLabel", { Text = "PREMIUM · v15.10", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
     new("TextLabel", { Text = "Introduce tu key de acceso", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = THEME.subtext, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 92), Size = UDim2.new(1, 0, 0, 18), Parent = kf })
     local tb = new("TextBox", { Text = "", PlaceholderText = "CASPER-XXXX", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = THEME.text, BackgroundColor3 = THEME.item, BorderSizePixel = 0, Position = UDim2.fromOffset(24, 124), Size = UDim2.new(1, -48, 0, 42), Parent = kf, ClearTextOnFocus = false }, { corner(10), new("UIStroke", { Color = Color3.fromRGB(50, 50, 70), Thickness = 1, Transparency = 0.3 }) })
     local sl = new("TextLabel", { Text = "", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Color3.fromRGB(255, 90, 90), BackgroundTransparency = 1, Position = UDim2.fromOffset(24, 174), Size = UDim2.new(1, -48, 0, 20), Parent = kf })
@@ -915,7 +934,7 @@ local function buildShell(S)
     ui.chipText = H.label(ui.chipHolder, "micro", "—", { Position = UDim2.fromOffset(19, 0), Size = UDim2.fromOffset(80, 20), TextColor3 = V.sub, ZIndex = 9 })
 
     local verBadge = new("Frame", { Size = UDim2.fromOffset(46, 18), Position = UDim2.fromOffset(186, 45), BackgroundColor3 = THEME.accent, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(9) }); H.bindAccent(verBadge, "BackgroundColor3")
-    H.label(verBadge, "micro", "v15.9", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
+    H.label(verBadge, "micro", "v15.10", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
 
     local profile = new("Frame", { Size = UDim2.fromOffset(184, 40), Position = UDim2.new(1, -318, 0.5, -20), BackgroundColor3 = V.card, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(20) })
     H.stroke(profile, V.strokeHi, 1, 0.5)
@@ -1323,25 +1342,43 @@ local function buildRuntime(S)
 
     -- ---------------- Botones reales del HUD móvil ----------------
     -- En móvil la R no llega: se pulsa el botón REFILL de la pantalla.
+    -- El botón vive en el borde derecho y se llama así: se busca por nombre y
+    -- por texto, incluso en labels hijos, y se descarta cualquier botón de
+    -- nuestras propias interfaces.
     local refillBtnCache, refillBtnScan = nil, 0
+    local function isOwnGui(obj)
+        local cur = obj
+        for _ = 1, 8 do
+            if not cur or cur == playerGui then return false end
+            if cur.Name == "CasperPremium" or cur.Name == "CasperTooltip" or cur.Name == "CasperCursor" then return true end
+            cur = cur.Parent
+        end
+        return false
+    end
+    local function hasRefillText(obj)
+        if string.lower(tostring(obj.Name or "")):find("refill", 1, true) then return true end
+        if string.lower(tostring(obj.Text or "")):find("refill", 1, true) then return true end
+        for _, d in ipairs(obj:GetDescendants()) do
+            if d:IsA("TextLabel") and string.lower(d.Text or ""):find("refill", 1, true) then return true end
+        end
+        return false
+    end
     local function findRefillButton()
         if refillBtnCache and refillBtnCache.Parent and refillBtnCache.Visible then return refillBtnCache end
         if os.clock() - refillBtnScan < 1.0 then return nil end
         refillBtnScan = os.clock()
         refillBtnCache = nil
         local vp = viewport()
+        local wantX = vp.X * ((tonumber(Config.RefillPosX) or 92) / 100)
+        local wantY = vp.Y * ((tonumber(Config.RefillPosY) or 55) / 100)
         local best, bestScore
         for _, g in ipairs(playerGui:GetDescendants()) do
-            if g:IsA("GuiButton") and g.Visible and g.AbsoluteSize.X >= 36 and g.AbsoluteSize.Y >= 36 then
-                local txt = string.lower(g.Text or "")
-                if txt == "" then
-                    local lbl = g:FindFirstChildWhichIsA("TextLabel", true)
-                    if lbl then txt = string.lower(lbl.Text or "") end
-                end
-                if txt:find("refill", 1, true) then
-                    local p = g.AbsolutePosition
-                    -- el botón de refill vive en el borde derecho
-                    local score = (p.X > vp.X * 0.55 and 1000 or 0) + p.X - g.AbsoluteSize.Y / 10
+            if g:IsA("GuiButton") and g.Visible and g.AbsoluteSize.X >= 30 and g.AbsoluteSize.Y >= 30 and not isOwnGui(g) then
+                if hasRefillText(g) then
+                    local pos, size = g.AbsolutePosition, g.AbsoluteSize
+                    local cx, cy = pos.X + size.X / 2, pos.Y + size.Y / 2
+                    -- premia el borde derecho y la cercanía al punto configurado
+                    local score = (cx > vp.X * 0.6 and 1000 or 0) - (math.abs(cx - wantX) + math.abs(cy - wantY)) / 4
                     if not bestScore or score > bestScore then best, bestScore = g, score end
                 end
             end
@@ -1355,17 +1392,22 @@ local function buildRuntime(S)
     RT.tapRefill = function()
         if not isMobile then return false end
         local btn = findRefillButton()
-        if btn then return RT.clickIn(btn, 50) end
+        if btn then
+            if RT.clickIn(btn, 50) then return true end
+            refillBtnCache = nil
+        end
         return RT.tapPercent(Config.RefillPosX, Config.RefillPosY, 60)
     end
 
     -- Pulsar recarga: botón REFILL en móvil, tecla R en PC.
+    -- El segundo toque solo se manda si las blades siguen bajas, para no
+    -- gastar repuestos de más cuando el primero ya entró.
     local function pressReload(prompt)
         local hold = (prompt and prompt.HoldDuration or 0) + 0.2
         if isMobile then
             RT.tapRefill()
             task.wait(hold)
-            RT.tapRefill()
+            if RT.bladesLow and RT.bladesLow() then RT.tapRefill() end
             task.wait(0.25)
             return
         end
@@ -1636,12 +1678,35 @@ local function buildRuntime(S)
         return nil
     end
 
+    -- Respaldo por partes equipadas, para cuando el actor no está enlazado
+    -- (móvil con ejecutores sin getactors). Devuelve total, intactas.
+    local function bladeStats()
+        local parts = bladeParts()
+        local total, intact = 0, 0
+        for _, p in ipairs(parts) do
+            total += 1
+            if not p:GetAttribute("Broken") then intact += 1 end
+        end
+        return total, intact
+    end
+
     -- Los segmentos del loadout son la fuente fiable. allBroken() marca "rota" en
     -- cuanto la parte equipada se gasta aunque queden 2 o 3 blades útiles, y eso
     -- disparaba viajes a la estación sin necesidad.
     RT.bladesEmpty = function()
         local seg = RT.bladeCount()
         if seg ~= nil then return seg <= 0 end
+        return allBroken()
+    end
+
+    -- Umbral de recarga: por defecto a 2 blades o menos, no solo a 0.
+    -- Con 2/3 la recarga también salta, que es lo que se pide en móvil.
+    RT.bladesLow = function()
+        local limit = math.clamp(tonumber(Config.RefillAtBlades) or 2, 1, 3)
+        local seg = RT.bladeCount()
+        if seg ~= nil then return seg <= limit end
+        local total, intact = bladeStats()
+        if total > 0 then return intact <= limit end
         return allBroken()
     end
 
@@ -1687,7 +1752,7 @@ local function buildRuntime(S)
     -- Solo se pide estación cuando la recarga rápida ya no puede resolverlo. La
     -- histéresis de 0.35 s evita que un frame a medio romper dispare el viaje.
     local function needBladeRaw()
-        if not RT.bladesEmpty() then return false end
+        if not RT.bladesLow() then return false end
         if (Farm.BladesEmptyFor or 0) < 0.35 then return false end
         if canQuickReload() then return false end
         local sp = spareLeft()
@@ -1913,7 +1978,7 @@ local function buildRuntime(S)
                 pressReload(nil)
                 local t0 = os.clock()
                 while os.clock() - t0 < 1.4 do
-                    if not RT.bladesEmpty() then ok = true break end
+                    if not RT.bladesLow() then ok = true break end
                     if not Alive() then break end
                     task.wait(0.1)
                 end
@@ -3115,7 +3180,7 @@ local function buildRuntime(S)
                 local allowed = Config.AutoReloadR or Config.AutoRefillBlade
                 -- 1) Recarga rápida. Va primero y también en modo wave,
                 --    porque el camino de estación de abajo se cede a waveLoop.
-                if allowed and CanUseHere() and not Farm.LootBusy and not RT.refillBusy() and RT.bladesEmpty() then
+                if allowed and CanUseHere() and not Farm.LootBusy and not RT.refillBusy() and RT.bladesLow() then
                     if (Farm.BladesEmptyFor or 0) >= 0.35 and canQuickReload() then
                         local wait = math.max(0.8, (tonumber(Config.RefillCooldown) or 5) * 0.4)
                         if os.clock() - lastRefill >= wait then
@@ -3217,17 +3282,17 @@ local function buildRuntime(S)
         while S.ui.gui and S.ui.gui.Parent do
             task.wait(0.1)
             if not Alive() then break end
-            local empty = RT.bladesEmpty() == true
-            if empty then
+            local low = RT.bladesLow() == true
+            if low then
                 emptyStart = emptyStart or os.clock()
                 Farm.BladesEmptyFor = os.clock() - emptyStart
             else
                 emptyStart = nil; Farm.BladesEmptyFor = 0
             end
-            if wasEmpty and not empty then
+            if wasEmpty and not low then
                 Farm.ReloadRejects = 0
             end
-            wasEmpty = empty
+            wasEmpty = low
             acc += 0.1
             if acc >= 1 then
                 acc = 0
@@ -4279,6 +4344,10 @@ local function buildTabs(S)
         api.Toggle("Auto Refill Blades", "AutoRefillBlade", function(s) S.notify("Refill Blades", s and "Activado" or "Desactivado", 2) end, { requires = "game", tip = "Igual que el anterior y, sin repuestos, va a la estación" })
         api.Toggle("Auto Refill Thunder", "AutoRefillThunder", function(s) S.notify("Refill Thunder", s and "Activado" or "Desactivado", 2) end, { requires = "game" })
         api.Section("Ajustes")
+        api.Slider("Recargar con N blades o menos", 1, 3, "RefillAtBlades", function(v)
+            S.notify("Refill", "Recargará a " .. v .. " blades o menos", 2)
+        end)
+        api.Label("Con 2 por defecto: la recarga entra en cuanto bajas a 2/3, sin esperar a quedarte a cero. Ponlo en 3 para recargar siempre que no estés lleno.", 40)
         api.Slider("Cooldown refill", 1, 30, "RefillCooldown")
         api.Slider("Velocidad refill", 100, 2000, "RefillSpeed")
         api.Slider("Altura de aproximación", 0, 12, "RefillHeight")
@@ -4291,9 +4360,9 @@ local function buildTabs(S)
             local ok = RT.tapRefill()
             S.notify("Refill", ok and (btn and "Botón REFILL pulsado" or "Toque de respaldo enviado") or "No encuentro el botón REFILL", 2)
         end)
-        api.Slider("Posición REFILL X (%)", 50, 98, "RefillPosX")
-        api.Slider("Posición REFILL Y (%)", 40, 95, "RefillPosY")
-        api.Label("En móvil no existe la tecla R: la recarga se hace pulsando el botón REFILL de la pantalla. El script lo busca por texto; si tu HUD lo tiene con otro nombre, usa la posición de respaldo (89/70 por defecto, justo el botón de la derecha).", 48)
+        api.Slider("Posición REFILL X (%)", 50, 99, "RefillPosX")
+        api.Slider("Posición REFILL Y (%)", 20, 95, "RefillPosY")
+        api.Label("En móvil no existe la tecla R: la recarga se hace pulsando el botón REFILL de la pantalla. El script lo busca por nombre y texto; si tu HUD lo tiene con otro nombre, usa la posición de respaldo (92/55 por defecto, encima del botón REFILL).", 48)
         api.Button("Refill manual (1 vez)", function()
             local assets = ReplicatedStorage:FindFirstChild("Assets")
             local remotes = assets and assets:FindFirstChild("Remotes")
@@ -4317,6 +4386,7 @@ local function buildTabs(S)
             S.notify("Refill Debug",
                 "Seg: " .. tostring(seg) .. " · Rel: " .. tostring(rel) ..
                 " · Refills: " .. tostring(RT.refillsLeft() or "?") ..
+                " · Umbral: " .. tostring(Config.RefillAtBlades) ..
                 " · SinCargas: " .. tostring(S.Farm.NoRefills) ..
                 " · Lock: " .. tostring(S.Farm.LockKind) ..
                 " · Quedan: " .. string.format("%.1f", (S.Farm.LockUntil or 0) - os.clock()) ..
@@ -4439,6 +4509,7 @@ local function buildTabs(S)
                 "refills=" .. tostring(RT.refillsLeft()),
                 "refillbtn=" .. tostring(RT.findRefillButton and RT.findRefillButton() ~= nil),
                 "refillpos=" .. tostring(Config.RefillPosX) .. "x" .. tostring(Config.RefillPosY),
+                "refillat=" .. tostring(Config.RefillAtBlades),
                 "lock=" .. tostring(S.Farm.LockKind),
                 "hardmove=" .. tostring(S.Farm.HardMove),
                 "flyheight=" .. tostring(Config.FlyHeight),
@@ -4840,7 +4911,7 @@ local function boot(S)
                 d.actor.set(S.Farm.ActorActive and (S.Farm.ActorActive() and "ENLAZADO" or "sin enlace") or "n/d")
                 d.refills.set(tostring(RT.refillsLeft() or "?"))
                 local seg = S.Farm.ActorSegments and S.Farm.ActorSegments()
-                d.blades.set(RT.bladesEmpty() and "VACÍAS" or (seg and tostring(seg) or "OK"))
+                d.blades.set(RT.bladesEmpty() and "VACÍAS" or ((RT.bladesLow() and "BAJAS") or (seg and tostring(seg) or "OK")))
                 d.spears.set(tostring(RT.spearsLeft() or "?"))
                 local titans = Workspace:FindFirstChild("Titans")
                 d.titans.set(titans and tostring(#titans:GetChildren()) or "0")
@@ -4919,8 +4990,8 @@ local function boot(S)
     if startTab then S.selectTab(startTab) end
     if S.syncMobile then S.syncMobile() end
 
-    S.notify("CASPER HUB PREMIUM v15.9", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
-    print("[CASPER HUB PREMIUM v15.9] Cargado con éxito.")
+    S.notify("CASPER HUB PREMIUM v15.10", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
+    print("[CASPER HUB PREMIUM v15.10] Cargado con éxito.")
 end
 
 -- ============================================================
