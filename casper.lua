@@ -1,7 +1,16 @@
 --[[
-  CASPER HUB PREMIUM — v15.4
+  CASPER HUB PREMIUM — v15.7
   Móvil/PC + Delta/Xeno.
 
+  v15.7:
+   · recorrido adelante/atrás mucho más largo: amplitud hasta 400 y factor propio en ese patrón
+   · pasadas más lentas para que el trayecto completo se recorra de verdad
+  v15.6:
+   · movimiento de farm con recorridos largos: adelante/atrás por defecto
+   · el vaivén largo va más lento para que sean pasadas de verdad, no temblores
+  v15.5:
+   · Auto Farm ya no se queda clavado sobre la nuca: zigzag, lado a lado o adelante/atrás
+   · amplitud y velocidad del vaivén ajustables, con seguimiento amortiguado (sin vibrar)
   v15.4:
    · fix blades: los segmentos del loadout mandan, allBroken() solo como respaldo
    · histéresis de 0.35 s antes de viajar: ya no se va a recargar con 2/3
@@ -122,6 +131,7 @@ CheckSavedKey()
 -- ============================================================
 local Config = {
     AutoFarm = false, FlySpeed = 600, FlyHeight = 170, AutoSkill = false, NoclipFarm = true,
+    FarmStrafe = true, FarmStrafeMode = "Adelante/atrás", FarmStrafeAmp = 150, FarmStrafeSpeedX100 = 50,
     AutoEscape = false, EscapeCooldownX100 = 15, EscapeMinSize = 20, DebugEscape = false,
     AutoRefillBlade = false, AutoRefillThunder = false, AutoRefillWave = false, AutoReloadR = true,
     RefillCooldown = 5, RefillSpeed = 800, RefillHeight = 3, WaveSpeed = 1000,
@@ -355,6 +365,12 @@ Config.M1Hold = math.clamp(tonumber(Config.M1Hold) or 40, 10, 400)
 Config.ClearWaveRange = math.clamp(tonumber(Config.ClearWaveRange) or 300, 50, 2000)
 Config.HitCount = math.clamp(tonumber(Config.HitCount) or 5, 1, 15)
 Config.DamageMult = math.clamp(tonumber(Config.DamageMult) or 10, 1, 20)
+Config.FarmStrafeAmp = math.clamp(tonumber(Config.FarmStrafeAmp) or 150, 10, 400)
+Config.FarmStrafeSpeedX100 = math.clamp(tonumber(Config.FarmStrafeSpeedX100) or 50, 20, 300)
+if Config.FarmStrafeMode ~= "Zigzag" and Config.FarmStrafeMode ~= "Lado a lado" and Config.FarmStrafeMode ~= "Adelante/atrás" then
+    Config.FarmStrafeMode = "Adelante/atrás"
+end
+if type(Config.FarmStrafe) ~= "boolean" then Config.FarmStrafe = true end
 -- guardas: un config guardado viejo puede traer estas tablas vacías o nil
 if type(Config.Favorites) ~= "table" then Config.Favorites = {} end
 if type(Config.Hotkeys) ~= "table" then Config.Hotkeys = {} end
@@ -437,6 +453,11 @@ local function pushLog(title, message)
 end
 
 local CHANGELOG = {
+    "15.7 · recorrido adelante/atrás mucho más largo: amplitud hasta 400 y factor propio en ese patrón",
+    "15.7 · pasadas más lentas para que el trayecto completo se recorra de verdad",
+    "15.6 · movimiento de farm con recorridos largos: adelante/atrás por defecto",
+    "15.5 · Auto Farm ya no se queda clavado sobre la nuca: zigzag, lado a lado o adelante/atrás",
+    "15.5 · amplitud y velocidad del vaivén ajustables, con seguimiento amortiguado",
     "15.4 · fix blades: los segmentos mandan y la recarga tiene histéresis (ya no viaja con 2/3)",
     "15.4 · fix recarga: Auto Reload R solo también va a estación al quedarse sin repuestos",
     "15.4 · fix atascos: Clear Wave y Auto M1 no registran doble y el objetivo atascado caduca de verdad",
@@ -484,7 +505,7 @@ local function buildLoader()
     local monogram = new("TextLabel", { Text = "C", Font = Enum.Font.GothamBlack, TextSize = 19, TextColor3 = Color3.new(1, 1, 1), TextTransparency = 1, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = logo })
 
     local title = new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 17, TextColor3 = Color3.fromRGB(245, 247, 255), TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 74), Size = UDim2.new(1, 0, 0, 20), ZIndex = 4, Parent = card })
-    local sub = new("TextLabel", { Text = "PREMIUM · v15.4", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
+    local sub = new("TextLabel", { Text = "PREMIUM · v15.7", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
 
     local stepLabel = new("TextLabel", { Text = "Iniciando", Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = Color3.fromRGB(150, 158, 184), TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, Position = UDim2.fromOffset(22, 122), Size = UDim2.new(1, -100, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4, Parent = card })
     local percentLabel = new("TextLabel", { Text = "0%", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = accent, TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1, Position = UDim2.new(1, -70, 0, 122), Size = UDim2.fromOffset(48, 14), ZIndex = 4, Parent = card })
@@ -544,7 +565,7 @@ if not isKeyVerified then
     local keyGui = new("ScreenGui", { Name = "KeySystem", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = playerGui })
     local kf = new("Frame", { Size = UDim2.fromOffset(340, 268), Position = UDim2.new(0.5, -170, 0.5, -134), BackgroundColor3 = THEME.bg, BorderSizePixel = 0, Parent = keyGui }, { corner(18), new("UIStroke", { Color = THEME.accent, Thickness = 1.5, Transparency = 0.3 }) })
     new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 25, TextColor3 = THEME.text, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 34), Parent = kf })
-    new("TextLabel", { Text = "PREMIUM · v15.4", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
+    new("TextLabel", { Text = "PREMIUM · v15.7", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
     new("TextLabel", { Text = "Introduce tu key de acceso", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = THEME.subtext, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 92), Size = UDim2.new(1, 0, 0, 18), Parent = kf })
     local tb = new("TextBox", { Text = "", PlaceholderText = "CASPER-XXXX", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = THEME.text, BackgroundColor3 = THEME.item, BorderSizePixel = 0, Position = UDim2.fromOffset(24, 124), Size = UDim2.new(1, -48, 0, 42), Parent = kf, ClearTextOnFocus = false }, { corner(10), new("UIStroke", { Color = Color3.fromRGB(50, 50, 70), Thickness = 1, Transparency = 0.3 }) })
     local sl = new("TextLabel", { Text = "", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Color3.fromRGB(255, 90, 90), BackgroundTransparency = 1, Position = UDim2.fromOffset(24, 174), Size = UDim2.new(1, -48, 0, 20), Parent = kf })
@@ -864,7 +885,7 @@ local function buildShell(S)
     ui.chipText = H.label(ui.chipHolder, "micro", "—", { Position = UDim2.fromOffset(19, 0), Size = UDim2.fromOffset(80, 20), TextColor3 = V.sub, ZIndex = 9 })
 
     local verBadge = new("Frame", { Size = UDim2.fromOffset(46, 18), Position = UDim2.fromOffset(186, 45), BackgroundColor3 = THEME.accent, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(9) }); H.bindAccent(verBadge, "BackgroundColor3")
-    H.label(verBadge, "micro", "v15.4", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
+    H.label(verBadge, "micro", "v15.7", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
 
     local profile = new("Frame", { Size = UDim2.fromOffset(184, 40), Position = UDim2.new(1, -318, 0.5, -20), BackgroundColor3 = V.card, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(20) })
     H.stroke(profile, V.strokeHi, 1, 0.5)
@@ -2081,6 +2102,10 @@ local function buildRuntime(S)
     if not table.find(S.M1_MODES, Config.M1Mode) then
         Config.M1Mode = "Remoto"
     end
+    S.STRAFE_MODES = { "Adelante/atrás", "Zigzag", "Lado a lado" }
+    if not table.find(S.STRAFE_MODES, Config.FarmStrafeMode) then
+        Config.FarmStrafeMode = S.STRAFE_MODES[1]
+    end
 
     S.WAVE_MAPS = { "Trost" }
     S.WAVE_DIFFS = { "Easy (E- Grade)" }
@@ -2626,6 +2651,41 @@ local function buildRuntime(S)
         end
     end
 
+    -- Vaivén alrededor de la nuca con recorridos muy largos de delante hacia atrás.
+    -- Devuelve un desplazamiento horizontal (nil si el vaivén está apagado).
+    RT.strafeOffset = function(root, nape)
+        if not Config.FarmStrafe then return nil end
+        local amp = math.clamp(tonumber(Config.FarmStrafeAmp) or 150, 10, 400)
+        local hz = math.clamp((tonumber(Config.FarmStrafeSpeedX100) or 50) / 100, 0.2, 3)
+        local flat = nape.Position - root.Position
+        flat = Vector3.new(flat.X, 0, flat.Z)
+        local dir = flat.Magnitude > 1e-3 and flat.Unit or Vector3.new(1, 0, 0)
+        local right = Vector3.new(-dir.Z, 0, dir.X)
+        local phase = os.clock() * hz * math.pi * 2
+        local mode = Config.FarmStrafeMode
+        if mode == "Lado a lado" then
+            -- el lateral con la amplitud entera sería inmanejable, se escala
+            return right * (math.sin(phase) * amp * 0.55)
+        elseif mode == "Adelante/atrás" then
+            -- recorrido completo con factor propio y vaivén muy lento: pasadas largas
+            return dir * (math.sin(phase * 0.45) * amp * 1.5)
+        end
+        -- zigzag: lateral corto y avance/retroceso largo
+        return right * (math.sin(phase) * amp * 0.45) + dir * (math.sin(phase * 2) * amp * 0.8)
+    end
+
+    -- Seguimiento amortiguado del punto oscilante: con la velocidad máxima
+    -- el personaje vibraría encima del objetivo en vez de deslizarse.
+    local function strafeFollow(root, targetPos, maxSpeed)
+        local diff = targetPos - root.Position
+        local dist = diff.Magnitude
+        if dist < 0.4 then
+            root.AssemblyLinearVelocity = Vector3.zero
+            return
+        end
+        root.AssemblyLinearVelocity = diff.Unit * math.min(maxSpeed, dist * 6)
+    end
+
     -- Auto M1: mantiene el ataque pulsado. En modo Remoto no toca la pantalla.
     -- Mientras está ON, el farm no ataca por su cuenta (evita registros dobles)
     -- y el objetivo atascado se salta aquí. Si Clear Wave está activo, manda él.
@@ -2727,11 +2787,13 @@ local function buildRuntime(S)
                     local nape = titan and napeOf(titan)
                     local standoff = math.clamp(tonumber(Config.FlyHeight) or 170, STANDOFF_MIN, STANDOFF_MAX)
                     local targetPos
+                    local strafe = nil
 
                     if nape then
-                        targetPos = nape.Position + Vector3.new(0, standoff, 0)
+                        strafe = RT.strafeOffset(root, nape)
+                        targetPos = nape.Position + Vector3.new(0, standoff, 0) + (strafe or Vector3.zero)
                         lastY = targetPos.Y
-                        Farm.CruiseY = targetPos.Y
+                        Farm.CruiseY = nape.Position.Y + standoff
                         Farm.LiveAlt = root.Position.Y - nape.Position.Y
                     else
                         local holdY = Farm.CruiseY or lastY or root.Position.Y
@@ -2742,7 +2804,10 @@ local function buildRuntime(S)
                     local diff = targetPos - root.Position
                     local dist = diff.Magnitude
 
-                    if nape and dist <= standoff + 8 then
+                    if nape and strafe then
+                        -- con vaivén se persigue el punto oscilante, no se queda clavado
+                        strafeFollow(root, targetPos, speed)
+                    elseif nape and dist <= standoff + 8 then
                         if dist > ATTACK_GAP_DIST then
                             root.AssemblyLinearVelocity = diff.Unit * math.min(speed, dist / dt)
                         else
@@ -3290,6 +3355,7 @@ local function buildRuntime(S)
         "AutoRefillWave", "AutoCreateRaid", "AutoStartRaid", "AutoSkipCutscene", "AutoOpenChestFree",
         "AutoOpenChestPremium", "AutoFinishChest", "AutoCannon", "MassiveAttack", "AutoPlay", "AutoCreateWave",
         "AutoStartWave", "AutoReady", "AutoVoteSkip", "AutoClearWave", "AutoLeaveAtWave", "AutoLootCrate", "AutoM1",
+        "FarmStrafe",
     }
     local function setFlags(map)
         for _, key in ipairs(TOGGLE_KEYS) do
@@ -3311,8 +3377,8 @@ local function buildRuntime(S)
         S.notify("Pánico", "Todas las features apagadas", 2)
     end
     S.PRESETS = {
-        { name = "Farm AFK", tip = "Farm, skill y refill automático", flags = { AutoFarm = true, AutoSkill = true, AutoRefillBlade = true, AutoRefillThunder = true, AutoEscape = true } },
-        { name = "Wave grind", tip = "Refill de oleada + farm", flags = { AutoRefillWave = true, AutoFarm = true, AutoSkill = true, AutoEscape = true, AutoRefillBlade = true } },
+        { name = "Farm AFK", tip = "Farm, skill y refill automático", flags = { AutoFarm = true, AutoSkill = true, AutoRefillBlade = true, AutoRefillThunder = true, AutoEscape = true, FarmStrafe = true } },
+        { name = "Wave grind", tip = "Refill de oleada + farm", flags = { AutoRefillWave = true, AutoFarm = true, AutoSkill = true, AutoEscape = true, AutoRefillBlade = true, FarmStrafe = true } },
         { name = "Wave auto", tip = "Crea, inicia, limpia y lootea solo", flags = { AutoPlay = true, AutoCreateWave = true, AutoStartWave = true, AutoReady = true, AutoVoteSkip = true, AutoClearWave = true, AutoLootCrate = true, AutoRefillBlade = true, AutoRetry = true } },
         { name = "Raid solo", tip = "Prepara raid con skips y cofres", flags = { AutoSkipCutscene = true, AutoCannon = true, AutoOpenChestFree = true, AutoFinishChest = true } },
         { name = "Limpio", tip = "Apaga todo", flags = {} },
@@ -3868,6 +3934,18 @@ local function buildTabs(S)
             EventBus:Emit("ConfigChanged", "FlyHeight", v)
             S.notify("Altura", "Fijada en " .. v, 2)
         end, { requires = "game", tip = "Toma tu altura actual sobre la nuca y la pone como valor" })
+
+        api.Section("Movimiento al farmear")
+        api.Toggle("No quedarse quieto", "FarmStrafe", function(s)
+            S.notify("Movimiento", s and "ON · pasadas largas" or "OFF · quieto", 2)
+        end, { requires = "game", tip = "Se mueve de delante hacia atrás alrededor de la nuca en vez de quedarse clavado" })
+        api.Dropdown("Patrón", S.STRAFE_MODES, "FarmStrafeMode", function(option)
+            S.notify("Movimiento", "Patrón: " .. option, 2)
+        end)
+        api.Slider("Recorrido (studs)", 10, 400, "FarmStrafeAmp")
+        api.Slider("Velocidad del vaivén (x100)", 20, 300, "FarmStrafeSpeedX100")
+        api.Label("El recorrido se multiplica x1.5 en el patrón adelante/atrás: con 150 son pasadas de ~450 studs de punta a punta. Sube el recorrido si te alcanzan, bájalo si falla el registro. La velocidad baja alarga cada pasada.", 56)
+
         api.Section("Golpe")
         api.Toggle("Ataque a todo el mapa", "MassiveAttack", function(s)
             S.notify("Alcance", s and "Global (ignora el rango)" or "Limitado por rango", 2)
@@ -4204,6 +4282,10 @@ local function buildTabs(S)
                 "range=" .. tostring(Config.AttackRange),
                 "global=" .. tostring(Config.MassiveAttack),
                 "hits=" .. tostring(Config.HitCount),
+                "strafe=" .. tostring(Config.FarmStrafe),
+                "strafemode=" .. tostring(Config.FarmStrafeMode),
+                "strafeamp=" .. tostring(Config.FarmStrafeAmp),
+                "strafespeed=" .. tostring(Config.FarmStrafeSpeedX100),
                 "m1mode=" .. tostring(Config.M1Mode),
                 "m1delay=" .. tostring(Config.M1Delay),
                 "m1pos=" .. tostring(Config.M1PosX) .. "x" .. tostring(Config.M1PosY),
@@ -4345,6 +4427,7 @@ local function buildTabs(S)
             { key = "AutoRefillThunder", name = "Thunder" },
             { key = "AutoRetry", name = "Auto Click" },
             { key = "AutoM1", name = "Auto M1" },
+            { key = "FarmStrafe", name = "Movimiento farm" },
         }
         -- las hotkeys guardadas se reflejan en su dropdown al abrir el tab
         Config.Hotkeys = Config.Hotkeys or {}
@@ -4533,7 +4616,7 @@ local function boot(S)
 
     local function refreshStatus()
         local active = {}
-        for _, key in ipairs({ "AutoFarm", "AutoM1", "AutoSkill", "AutoRefillBlade", "AutoRefillThunder", "AutoRefillWave", "AutoEscape", "AutoRetry", "AutoCreateRaid", "AutoStartRaid", "AutoCannon", "AutoCreateWave", "AutoStartWave", "AutoClearWave", "AutoLootCrate" }) do
+        for _, key in ipairs({ "AutoFarm", "AutoM1", "FarmStrafe", "AutoSkill", "AutoRefillBlade", "AutoRefillThunder", "AutoRefillWave", "AutoEscape", "AutoRetry", "AutoCreateRaid", "AutoStartRaid", "AutoCannon", "AutoCreateWave", "AutoStartWave", "AutoClearWave", "AutoLootCrate" }) do
             if Config[key] then active[#active + 1] = key:gsub("Auto", "") end
         end
         if #active > 0 then
@@ -4654,8 +4737,8 @@ local function boot(S)
     if startTab then S.selectTab(startTab) end
     if S.syncMobile then S.syncMobile() end
 
-    S.notify("CASPER HUB PREMIUM v15.4", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
-    print("[CASPER HUB PREMIUM v15.4] Cargado con éxito.")
+    S.notify("CASPER HUB PREMIUM v15.7", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
+    print("[CASPER HUB PREMIUM v15.7] Cargado con éxito.")
 end
 
 -- ============================================================
