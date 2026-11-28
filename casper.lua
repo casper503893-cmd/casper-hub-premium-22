@@ -1,7 +1,15 @@
 --[[
-  CASPER HUB PREMIUM — v15.7
+  CASPER HUB PREMIUM — v15.8
   Móvil/PC + Delta/Xeno.
 
+  v15.8:
+   · móvil: la recarga pulsa el botón REFILL de la pantalla (la R no existe sin teclado)
+   · móvil: Auto Skill pulsa los botones TAP y Auto M1 el botón M1 real
+   · recarga: segundo intento, espera más larga en móvil y respaldo por posición ajustable
+   · fix noclip al reactivarlo, hotkeys con exclusión mutua, pánico completo
+   · fix configs: la selección y el nombre ya no se pierden al reconstruir
+   · fix doble disparo de botones y limpieza de sliders/suscripciones al reconstruir
+   · Auto M1 cachea el objetivo en vez de barrer todos los titanes a 50 Hz
   v15.7:
    · recorrido adelante/atrás mucho más largo: amplitud hasta 400 y factor propio en ese patrón
    · pasadas más lentas para que el trayecto completo se recorra de verdad
@@ -86,14 +94,6 @@
    · sección Wave completa (Auto Play, Create/Start, votos, Clear Wave, Leave At Wave)
    · anti-choque Wave ↔ Raid y Clear Wave ↔ Auto Farm
    · pánico ampliado a las features de wave
-  v13.4:
-   · pantalla de carga por etapas (tokens > shell > runtime > tabs > boot)
-   · render entre etapas, bucles escalonados, watchdog de 20s
-   · guard anti doble ejecución
-  v13.3:
-   · layout colapsado inicial, hitbox de sliders, escala sincronizada
-   · clickGui con Down/Up/Click, collapseBtn sin :Activate()
-   · _AutoSync real, dropdown sin solape, posición recortada al viewport
 ]]
 
 local Players             = game:GetService("Players")
@@ -134,7 +134,7 @@ local Config = {
     FarmStrafe = true, FarmStrafeMode = "Adelante/atrás", FarmStrafeAmp = 150, FarmStrafeSpeedX100 = 50,
     AutoEscape = false, EscapeCooldownX100 = 15, EscapeMinSize = 20, DebugEscape = false,
     AutoRefillBlade = false, AutoRefillThunder = false, AutoRefillWave = false, AutoReloadR = true,
-    RefillCooldown = 5, RefillSpeed = 800, RefillHeight = 3, WaveSpeed = 1000,
+    RefillCooldown = 5, RefillSpeed = 800, RefillHeight = 3, RefillPosX = 89, RefillPosY = 70, WaveSpeed = 1000,
     DamageMult = 10, HitCount = 5, AutoRetry = false, MassiveAttack = false, AttackRange = 2000,
     ClickPos = 88, ClickCooldown = 1,
     AutoM1 = true, M1Mode = "Remoto", M1Delay = 120, M1PosX = 50, M1PosY = 70, M1Hold = 40,
@@ -163,6 +163,8 @@ if isMobile then
     Config.FlyHeight = 170
     Config.M1Mode = "Remoto"
     Config.M1Delay = 120
+    Config.RefillPosX = 89
+    Config.RefillPosY = 70
     Config.UIWinW = nil
     Config.UIWinH = nil
 end
@@ -323,7 +325,8 @@ do
     function ConfigStore.ApplyCfg(s)
         if type(s) ~= "table" or type(s.Cfg) ~= "table" then return end
         for k, v in pairs(s.Cfg) do
-            if Config[k] ~= nil and type(Config[k]) == type(v) then
+            -- _AutoSync lo manda el store, no el snapshot
+            if Config[k] ~= nil and type(Config[k]) == type(v) and k ~= "_AutoSync" then
                 if type(v) == "table" then local o = {} for i, it in ipairs(v) do o[i] = it end Config[k] = o
                 else Config[k] = v end
             end
@@ -350,7 +353,7 @@ if autoSnap then
 else
     local sd = SettingsStore.Load("AOTR")
     if type(sd) == "table" and type(sd.Cfg) == "table" then
-        for k, v in pairs(sd.Cfg) do if Config[k] ~= nil and type(Config[k]) == type(v) then Config[k] = v end end
+        for k, v in pairs(sd.Cfg) do if Config[k] ~= nil and type(Config[k]) == type(v) and k ~= "_AutoSync" then Config[k] = v end end
     end
 end
 Config.FlyHeight = math.clamp(tonumber(Config.FlyHeight) or 170, 60, 250)
@@ -358,6 +361,8 @@ Config.AttackRange = math.clamp(tonumber(Config.AttackRange) or 2000, 100, 6000)
 Config.ClickPos = math.clamp(tonumber(Config.ClickPos) or 88, 20, 100)
 Config.ClickCooldown = math.clamp(tonumber(Config.ClickCooldown) or 1, 1, 10)
 Config.RefillHeight = math.clamp(tonumber(Config.RefillHeight) or 3, 0, 12)
+Config.RefillPosX = math.clamp(tonumber(Config.RefillPosX) or 89, 2, 98)
+Config.RefillPosY = math.clamp(tonumber(Config.RefillPosY) or 70, 2, 98)
 Config.M1Delay = math.clamp(tonumber(Config.M1Delay) or 120, 40, 1000)
 Config.M1PosX = math.clamp(tonumber(Config.M1PosX) or 50, 2, 98)
 Config.M1PosY = math.clamp(tonumber(Config.M1PosY) or 70, 2, 98)
@@ -395,15 +400,13 @@ local function tween(obj, time, props) TweenService:Create(obj, TweenInfo.new(ti
 local function getRoot() local c = player.Character return c and c:FindFirstChild("HumanoidRootPart") end
 local function Alive() return player and player.Parent ~= nil end
 
--- Un solo click lógico: señales por separado, o ratón virtual si no hay firesignal.
+-- Un solo click lógico: una sola señal, la que exista. Antes se disparaban
+-- cuatro seguidas y los botones con dos handlers registraban doble.
 local function clickGui(obj)
     if not obj or not obj.Parent then return false end
-    if type(firesignal) == "function" then
-        for _, sigName in ipairs({ "MouseButton1Down", "MouseButton1Up", "MouseButton1Click", "Activated" }) do
-            local sig = obj[sigName]
-            if sig then pcall(firesignal, sig) end
-        end
-        return true
+    local sig = obj.MouseButton1Click or obj.Activated or obj.MouseButton1Down
+    if sig and type(firesignal) == "function" then
+        if pcall(firesignal, sig) then return true end
     end
     pcall(function()
         local pos = obj.AbsolutePosition + obj.AbsoluteSize / 2
@@ -453,6 +456,13 @@ local function pushLog(title, message)
 end
 
 local CHANGELOG = {
+    "15.8 · móvil: la recarga pulsa el botón REFILL de la pantalla (la R no existe sin teclado)",
+    "15.8 · móvil: Auto Skill pulsa los botones TAP y Auto M1 el botón M1 real",
+    "15.8 · recarga: segundo intento, espera más larga en móvil y respaldo por posición ajustable",
+    "15.8 · fix noclip al reactivarlo, hotkeys con exclusión mutua, pánico completo",
+    "15.8 · fix configs: la selección y el nombre ya no se pierden al reconstruir",
+    "15.8 · fix doble disparo de botones y limpieza de sliders/suscripciones al reconstruir",
+    "15.8 · Auto M1 cachea el objetivo en vez de barrer todos los titanes a 50 Hz",
     "15.7 · recorrido adelante/atrás mucho más largo: amplitud hasta 400 y factor propio en ese patrón",
     "15.7 · pasadas más lentas para que el trayecto completo se recorra de verdad",
     "15.6 · movimiento de farm con recorridos largos: adelante/atrás por defecto",
@@ -505,7 +515,7 @@ local function buildLoader()
     local monogram = new("TextLabel", { Text = "C", Font = Enum.Font.GothamBlack, TextSize = 19, TextColor3 = Color3.new(1, 1, 1), TextTransparency = 1, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = logo })
 
     local title = new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 17, TextColor3 = Color3.fromRGB(245, 247, 255), TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 74), Size = UDim2.new(1, 0, 0, 20), ZIndex = 4, Parent = card })
-    local sub = new("TextLabel", { Text = "PREMIUM · v15.7", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
+    local sub = new("TextLabel", { Text = "PREMIUM · v15.8", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
 
     local stepLabel = new("TextLabel", { Text = "Iniciando", Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = Color3.fromRGB(150, 158, 184), TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, Position = UDim2.fromOffset(22, 122), Size = UDim2.new(1, -100, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4, Parent = card })
     local percentLabel = new("TextLabel", { Text = "0%", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = accent, TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1, Position = UDim2.new(1, -70, 0, 122), Size = UDim2.fromOffset(48, 14), ZIndex = 4, Parent = card })
@@ -565,7 +575,7 @@ if not isKeyVerified then
     local keyGui = new("ScreenGui", { Name = "KeySystem", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = playerGui })
     local kf = new("Frame", { Size = UDim2.fromOffset(340, 268), Position = UDim2.new(0.5, -170, 0.5, -134), BackgroundColor3 = THEME.bg, BorderSizePixel = 0, Parent = keyGui }, { corner(18), new("UIStroke", { Color = THEME.accent, Thickness = 1.5, Transparency = 0.3 }) })
     new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 25, TextColor3 = THEME.text, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 34), Parent = kf })
-    new("TextLabel", { Text = "PREMIUM · v15.7", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
+    new("TextLabel", { Text = "PREMIUM · v15.8", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
     new("TextLabel", { Text = "Introduce tu key de acceso", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = THEME.subtext, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 92), Size = UDim2.new(1, 0, 0, 18), Parent = kf })
     local tb = new("TextBox", { Text = "", PlaceholderText = "CASPER-XXXX", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = THEME.text, BackgroundColor3 = THEME.item, BorderSizePixel = 0, Position = UDim2.fromOffset(24, 124), Size = UDim2.new(1, -48, 0, 42), Parent = kf, ClearTextOnFocus = false }, { corner(10), new("UIStroke", { Color = Color3.fromRGB(50, 50, 70), Thickness = 1, Transparency = 0.3 }) })
     local sl = new("TextLabel", { Text = "", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Color3.fromRGB(255, 90, 90), BackgroundTransparency = 1, Position = UDim2.fromOffset(24, 174), Size = UDim2.new(1, -48, 0, 20), Parent = kf })
@@ -885,7 +895,7 @@ local function buildShell(S)
     ui.chipText = H.label(ui.chipHolder, "micro", "—", { Position = UDim2.fromOffset(19, 0), Size = UDim2.fromOffset(80, 20), TextColor3 = V.sub, ZIndex = 9 })
 
     local verBadge = new("Frame", { Size = UDim2.fromOffset(46, 18), Position = UDim2.fromOffset(186, 45), BackgroundColor3 = THEME.accent, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(9) }); H.bindAccent(verBadge, "BackgroundColor3")
-    H.label(verBadge, "micro", "v15.7", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
+    H.label(verBadge, "micro", "v15.8", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
 
     local profile = new("Frame", { Size = UDim2.fromOffset(184, 40), Position = UDim2.new(1, -318, 0.5, -20), BackgroundColor3 = V.card, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(20) })
     H.stroke(profile, V.strokeHi, 1, 0.5)
@@ -1160,8 +1170,8 @@ end
 -- ============================================================
 local function buildRuntime(S)
     local H = S.H
-    S.Farm = { Refilling = false, ReloadRejects = 0, ReloadSettleUntil = 0, BladesEmptyFor = 0, ActorSegments = nil, ActorReloads = nil, ActorActive = nil, SpearStuck = false, RecentlyRefilled = 0, LootBusy = false,
-        QuickReload = false, QuickFailed = 0, HoverPos = nil, QuickTries = 0, LockKind = nil, LockUntil = 0, LastRefillEnd = 0, LastAttackError = nil, NoRefills = false, MissStreak = 0, NoStation = false,
+    S.Farm = { Refilling = false, ReloadRejects = 0, BladesEmptyFor = 0, ActorSegments = nil, ActorReloads = nil, ActorActive = nil, SpearStuck = false, RecentlyRefilled = 0, LootBusy = false,
+        QuickReload = false, QuickFailed = 0, HoverPos = nil, QuickTries = 0, LockKind = nil, LockUntil = 0, NoRefills = false, MissStreak = 0, NoStation = false,
         HardMove = false, ZeroSince = 0, CruiseY = nil, LiveAlt = nil, StuckTitan = nil, StuckUntil = 0 }
     local Farm = S.Farm
     local RT = S.RT
@@ -1240,33 +1250,103 @@ local function buildRuntime(S)
         end)
     end
 
-    -- Activación de un botón sin tocar la pantalla: señales primero,
-    -- selección por GuiService después y toque como último recurso.
+    -- Toque por porcentaje del viewport. En móvil el teclado no existe: este es
+    -- el camino que sí llega al juego.
+    RT.tapPercent = function(xPct, yPct, hold)
+        local vp = viewport()
+        local px = vp.X * math.clamp((tonumber(xPct) or 50) / 100, 0.02, 0.98)
+        local py = vp.Y * math.clamp((tonumber(yPct) or 70) / 100, 0.02, 0.98)
+        local h = math.clamp(tonumber(hold) or tonumber(Config.M1Hold) or 40, 10, 400) / 1000
+        local ok = pcall(function()
+            VirtualInputManager:SendMouseMoveEvent(px, py, game)
+            VirtualInputManager:SendMouseButtonEvent(px, py, 0, true, game, 0)
+            task.wait(h)
+            VirtualInputManager:SendMouseButtonEvent(px, py, 0, false, game, 0)
+        end)
+        if ok then return true end
+        local okV, vuser = pcall(function() return game:GetService("VirtualUser") end)
+        if okV and vuser then
+            return pcall(function() vuser:ClickButton1(Vector2.new(px, py)) end)
+        end
+        return false
+    end
+
+    -- Activación de un botón sin tocar la pantalla: una sola señal.
+    -- En móvil, si no hay firesignal, toque real sobre el centro del botón.
     RT.activateGui = function(btn)
         if not btn or not btn.Parent then return false end
-        local fired = false
-        if type(firesignal) == "function" then
-            for _, sigName in ipairs({ "Activated", "MouseButton1Click", "MouseButton1Down", "MouseButton1Up" }) do
-                local sig = btn[sigName]
-                if sig then
-                    pcall(firesignal, sig)
-                    fired = true
+        local sig = btn.MouseButton1Click or btn.Activated or btn.MouseButton1Down
+        if sig and type(firesignal) == "function" then
+            if pcall(firesignal, sig) then return true end
+        end
+        if not isMobile then
+            local okSel = pcall(function() GuiService.SelectedObject = btn end)
+            if okSel then
+                task.wait(0.12)
+                RT.pressKey(Enum.KeyCode.Return, 0.06)
+                task.delay(0.6, function() pcall(function() GuiService.SelectedObject = nil end) end)
+                return true
+            end
+        end
+        return RT.clickIn(btn, 50)
+    end
+
+    -- ---------------- Botones reales del HUD móvil ----------------
+    -- En móvil la R no llega: se pulsa el botón REFILL de la pantalla.
+    local refillBtnCache, refillBtnScan = nil, 0
+    local function findRefillButton()
+        if refillBtnCache and refillBtnCache.Parent and refillBtnCache.Visible then return refillBtnCache end
+        if os.clock() - refillBtnScan < 1.0 then return nil end
+        refillBtnScan = os.clock()
+        refillBtnCache = nil
+        local vp = viewport()
+        local best, bestScore
+        for _, g in ipairs(playerGui:GetDescendants()) do
+            if g:IsA("GuiButton") and g.Visible and g.AbsoluteSize.X >= 36 and g.AbsoluteSize.Y >= 36 then
+                local txt = string.lower(g.Text or "")
+                if txt == "" then
+                    local lbl = g:FindFirstChildWhichIsA("TextLabel", true)
+                    if lbl then txt = string.lower(lbl.Text or "") end
+                end
+                if txt:find("refill", 1, true) then
+                    local p = g.AbsolutePosition
+                    -- el botón de refill vive en el borde derecho
+                    local score = (p.X > vp.X * 0.55 and 1000 or 0) + p.X - g.AbsoluteSize.Y / 10
+                    if not bestScore or score > bestScore then best, bestScore = g, score end
                 end
             end
         end
-        if fired then return true end
-        local okSel = pcall(function() GuiService.SelectedObject = btn end)
-        if okSel then
-            task.wait(0.12)
-            RT.pressKey(Enum.KeyCode.Return, 0.06)
-            task.delay(0.6, function() pcall(function() GuiService.SelectedObject = nil end) end)
-            return true
+        refillBtnCache = best
+        return best
+    end
+
+    RT.findRefillButton = findRefillButton
+
+    RT.tapRefill = function()
+        if not isMobile then return false end
+        local btn = findRefillButton()
+        if btn then return RT.clickIn(btn, 50) end
+        return RT.tapPercent(Config.RefillPosX, Config.RefillPosY, 60)
+    end
+
+    -- Pulsar recarga: botón REFILL en móvil, tecla R en PC.
+    local function pressReload(prompt)
+        local hold = (prompt and prompt.HoldDuration or 0) + 0.2
+        if isMobile then
+            RT.tapRefill()
+            task.wait(hold)
+            RT.tapRefill()
+            task.wait(0.25)
+            return
         end
-        return RT.clickIn(btn, tonumber(Config.ClickPos) or 88)
+        pcall(function() VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.R, false, game) end)
+        task.wait(hold)
+        pcall(function() VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.R, false, game) end)
     end
 
     RT.checkEscape = function()
         if not Config.AutoEscape then return end
+        if not CanUseHere() then return end
         local cooldown = (Config.EscapeCooldownX100 or 15) / 100
         local now = os.clock()
         if now - escapeState.lastEscape < cooldown then return end
@@ -1362,21 +1442,25 @@ local function buildRuntime(S)
     local REGISTER_CAP = 40
 
     -- Un slash con N napes. Vale igual para farm a distancia y para Clear Wave.
+    -- Se deja un frame corto antes de cerrar el slash para que el servidor
+    -- procese los registros con el ataque aún abierto.
     local function attackParts(parts)
         local post = getPost()
         if not post or #parts == 0 then return false end
         local want = math.max(1, tonumber(Config.DamageMult) or 1)
         local perPart = math.max(1, math.floor(REGISTER_CAP / #parts))
         local mult = math.min(want, perPart)
-        pcall(function()
+        local okA = pcall(function()
             post:FireServer("Attacks", "Slash", true)
             for _ = 1, mult do
                 for _, part in ipairs(parts) do
                     post:FireServer("Hitboxes", "Register", part, 143 + math.random() * 10, 0.26 + math.random() * 0.25)
                 end
             end
-            post:FireServer("Attacks", "Slash", false)
         end)
+        if not okA then return false end
+        task.wait(0.03)
+        pcall(function() post:FireServer("Attacks", "Slash", false) end)
         return true
     end
 
@@ -1390,25 +1474,28 @@ local function buildRuntime(S)
     end
 
     -- ==================== AUTO M1 ====================
-    -- Toque o click virtual opcional, solo para el modo Toque / Toque + Remoto.
-    RT.screenTap = function()
-        local cam = Workspace.CurrentCamera
-        local vp = (cam and cam.ViewportSize) or Vector2.new(1280, 720)
-        local px = vp.X * math.clamp((tonumber(Config.M1PosX) or 50) / 100, 0.02, 0.98)
-        local py = vp.Y * math.clamp((tonumber(Config.M1PosY) or 70) / 100, 0.02, 0.98)
-        local hold = math.clamp(tonumber(Config.M1Hold) or 40, 10, 400) / 1000
-        local ok = pcall(function()
-            VirtualInputManager:SendMouseMoveEvent(px, py, game)
-            VirtualInputManager:SendMouseButtonEvent(px, py, 0, true, game, 0)
-            task.wait(hold)
-            VirtualInputManager:SendMouseButtonEvent(px, py, 0, false, game, 0)
-        end)
-        if ok then return true end
-        local okV, vuser = pcall(function() return game:GetService("VirtualUser") end)
-        if okV and vuser then
-            return pcall(function() vuser:ClickButton1(Vector2.new(px, py)) end)
+    -- En móvil se pulsa el botón M1 real del HUD; en PC, punto por porcentaje.
+    local m1BtnCache, m1BtnAt = nil, 0
+    local function findM1Button()
+        if m1BtnCache and m1BtnCache.Parent and m1BtnCache.Visible then return m1BtnCache end
+        if os.clock() - m1BtnAt < 1.5 then return nil end
+        m1BtnAt = os.clock()
+        m1BtnCache = nil
+        for _, g in ipairs(playerGui:GetDescendants()) do
+            if g:IsA("GuiButton") and g.Visible and g.AbsoluteSize.X >= 36 then
+                local t = string.upper((g.Text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+                if t == "M1" then m1BtnCache = g break end
+            end
         end
-        return false
+        return m1BtnCache
+    end
+
+    RT.screenTap = function()
+        if isMobile then
+            local btn = findM1Button()
+            if btn then return RT.clickIn(btn, 50) end
+        end
+        return RT.tapPercent(Config.M1PosX, Config.M1PosY, Config.M1Hold)
     end
 
     -- Un slash suelto al objetivo válido más cercano. Reutiliza attackParts,
@@ -1512,13 +1599,11 @@ local function buildRuntime(S)
         return true
     end
 
+    -- Solo el actor: el atributo suelto puede quedar viejo si el enlace cae.
     RT.bladeCount = function()
         local seg = Farm.ActorSegments and Farm.ActorSegments()
-        if seg == nil then
-            local raw = player:GetAttribute("SH_Segments")
-            seg = raw and tonumber(raw) or nil
-        end
-        return seg
+        if seg ~= nil then return seg end
+        return nil
     end
 
     -- Los segmentos del loadout son la fuente fiable. allBroken() marca "rota" en
@@ -1560,7 +1645,7 @@ local function buildRuntime(S)
         return left
     end
 
-    -- ¿Tiene sentido intentar el R rápido ahora mismo?
+    -- ¿Tiene sentido intentar la recarga rápida ahora mismo?
     local function canQuickReload()
         if not (Config.AutoReloadR or Config.AutoRefillBlade) then return false end
         if os.clock() < (Farm.QuickFailed or 0) then return false end
@@ -1569,7 +1654,7 @@ local function buildRuntime(S)
         return (Farm.BladesEmptyFor or 0) >= 0.8
     end
 
-    -- Solo se pide estación cuando el R rápido ya no puede resolverlo. La
+    -- Solo se pide estación cuando la recarga rápida ya no puede resolverlo. La
     -- histéresis de 0.35 s evita que un frame a medio romper dispare el viaje.
     local function needBladeRaw()
         if not RT.bladesEmpty() then return false end
@@ -1577,7 +1662,7 @@ local function buildRuntime(S)
         if canQuickReload() then return false end
         local sp = spareLeft()
         if sp == 0 then return true end
-        -- si el R rápido ya falló, cae a la estación
+        -- si la recarga rápida ya falló, cae a la estación
         if os.clock() < (Farm.QuickFailed or 0) then return true end
         if sp == nil then return (Farm.ReloadRejects or 0) >= 2 or (Farm.BladesEmptyFor or 0) >= 5 end
         return true
@@ -1652,18 +1737,6 @@ local function buildRuntime(S)
             task.wait((prompt.HoldDuration or 0) + 0.15)
             prompt:InputHoldEnd()
         end)
-    end
-    local function pressR(prompt)
-        local hold = (prompt and prompt.HoldDuration or 0) + 0.2
-        pcall(function() VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.R, false, game) end)
-        task.wait(hold)
-        pcall(function() VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.R, false, game) end)
-    end
-    local function promptCount(prompt)
-        if not prompt then return nil end
-        local txt = tostring(prompt.ObjectText or "") .. " " .. tostring(prompt.ActionText or "")
-        local n = txt:match("(%d+)%s*/%s*%d+")
-        return n and tonumber(n) or nil
     end
 
     do
@@ -1754,11 +1827,10 @@ local function buildRuntime(S)
         end)
     end
 
-    local REFILL_TRIES, CHECK_WAIT = 2, 4
+    local REFILL_TRIES = 2
     local function markRefilled()
         Farm.RecentlyRefilled = os.clock() + 10
         Farm.ReloadRejects = 0
-        Farm.ReloadSettleUntil = os.clock() + 3
         Farm.ZeroSince = 0
         Farm.QuickFailed = 0
     end
@@ -1780,7 +1852,6 @@ local function buildRuntime(S)
         Farm.HoverPos = nil
         Farm.QuickTries = 0
         Farm.HardMove = false
-        Farm.LastRefillEnd = os.clock()
     end
     -- true solo si hay bloqueo vigente; si caducó, lo limpia y devuelve false
     RT.refillBusy = function()
@@ -1792,7 +1863,7 @@ local function buildRuntime(S)
         return false
     end
 
-    -- Recarga con R: se llama al llegar a 0 blades con repuestos.
+    -- Recarga rápida: botón REFILL en móvil, R en PC.
     -- Pausa el ataque pero el personaje se queda volando donde estaba.
     local QUICK_TRIES = 4
     local function quickBladeReload()
@@ -1809,7 +1880,7 @@ local function buildRuntime(S)
                 local r = getRoot()
                 if not r then break end
                 Farm.QuickTries += 1
-                RT.pressKey(Enum.KeyCode.R, 0.08)
+                pressReload(nil)
                 local t0 = os.clock()
                 while os.clock() - t0 < 1.4 do
                     if not RT.bladesEmpty() then ok = true break end
@@ -1824,7 +1895,7 @@ local function buildRuntime(S)
         if ok then
             markRefilled()
         else
-            S.notify("Refill", "R no respondió, yendo a estación", 3)
+            S.notify("Refill", isMobile and "El botón REFILL no respondió, yendo a estación" or "R no respondió, yendo a estación", 3)
         end
         return ok
     end
@@ -1874,11 +1945,12 @@ local function buildRuntime(S)
             pressPrompt(prompt)
             task.wait(0.15)
         end
-        pressR(prompt)
+        pressReload(prompt)
         task.wait(0.35)
         if post then pcall(function() post:FireServer("Attacks", "Reload", station) end) end
 
-        local ok = waitNeeded(4, needFn)
+        -- en móvil el toque tarda más en registrarse
+        local ok = waitNeeded(isMobile and 6 or 4, needFn)
 
         -- vuelta a la posición y altura de crucero previas
         local r2 = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -1962,21 +2034,33 @@ local function buildRuntime(S)
         return false
     end
 
+    -- Busca un botón por texto: exacto, luego prefijo, luego contenido.
+    -- "CREATE" ya no cae en cualquier botón que lo mencione.
     RT.pressButtonByName = function(name, exact)
-        local found = nil
+        name = string.upper(name)
+        local exactHit, prefixHit, containsHit
         for _, g in ipairs(playerGui:GetDescendants()) do
             if (g:IsA("TextButton") or g:IsA("TextLabel")) and g.Visible then
-                local text = string.upper(g.Text or "")
-                local match = exact and (text == name) or text:find(name, 1, true)
-                if match then
+                local text = string.upper((g.Text or ""):gsub("<[^>]->", ""))
+                text = text:gsub("^%s+", ""):gsub("%s+$", "")
+                local hit
+                if text == name then hit = "exact"
+                elseif text:sub(1, #name) == name then hit = "prefix"
+                elseif text:find(name, 1, true) then hit = "contains" end
+                if hit then
                     local btn = g
                     while btn and btn ~= playerGui and not btn:IsA("GuiButton") do btn = btn.Parent end
-                    if btn and btn:IsA("GuiButton") then found = btn break end
+                    if btn and btn:IsA("GuiButton") then
+                        if hit == "exact" and not exactHit then exactHit = btn
+                        elseif hit == "prefix" and not prefixHit then prefixHit = btn
+                        elseif hit == "contains" and not containsHit then containsHit = btn end
+                    end
                 end
             end
         end
-        if not found then return false end
-        clickGui(found)
+        local target = exactHit or prefixHit or containsHit
+        if not target then return false end
+        RT.activateGui(target)
         return true
     end
 
@@ -2107,8 +2191,8 @@ local function buildRuntime(S)
         Config.FarmStrafeMode = S.STRAFE_MODES[1]
     end
 
-    S.WAVE_MAPS = { "Trost" }
-    S.WAVE_DIFFS = { "Easy (E- Grade)" }
+    S.WAVE_MAPS = { "Trost", "Shiganshina", "Stohess" }
+    S.WAVE_DIFFS = { "Easy (E- Grade)", "Normal (D Grade)", "Hard (C Grade)", "Severe (B Grade)" }
     if not table.find(S.WAVE_MAPS, Config.WaveMap) then Config.WaveMap = S.WAVE_MAPS[1] end
     if not table.find(S.WAVE_DIFFS, Config.WaveLevel) then Config.WaveLevel = S.WAVE_DIFFS[1] end
 
@@ -2342,7 +2426,7 @@ local function buildRuntime(S)
                 if Farm.LootBusy then setClear("Pausado (caja)") return end
                 -- refillBusy caduca solo: nunca deja esto pegado
                 if Farm.LockKind == "quick" and RT.refillBusy() then
-                    setClear(("Recargando blades con R (%d/%d)"):format(Farm.QuickTries or 0, QUICK_TRIES))
+                    setClear(("Recargando blades (%d/%d)"):format(Farm.QuickTries or 0, QUICK_TRIES))
                     return
                 end
                 if RT.refillBusy() then setClear("Pausado (recarga)") return end
@@ -2475,7 +2559,6 @@ local function buildRuntime(S)
     S.lootStatusRef = nil
 
     local function lootStatus(text)
-        S.lootStatus = text
         if S.lootStatusRef then pcall(S.lootStatusRef.set, text) end
     end
 
@@ -2692,6 +2775,16 @@ local function buildRuntime(S)
     RT.m1Loop = function()
         task.wait(2.5)
         local lastTap, lastSlash, missStreak = 0, 0, 0
+        local titanCache, titanCacheAt = nil, 0
+        -- objetivo cacheado: evita barrer todos los titanes 50 veces por segundo
+        local function target(skip)
+            if os.clock() - titanCacheAt >= 0.18 then
+                titanCacheAt = os.clock()
+                titanCache = getTitan(nil)
+            end
+            if titanCache and titanCache ~= skip and not titanDead(titanCache) then return titanCache end
+            return getTitan(skip) or getTitan(nil)
+        end
         while S.ui.gui and S.ui.gui.Parent do
             task.wait(0.02)
             local clearOwns = Config.AutoClearWave and Config.AutoPlay
@@ -2706,7 +2799,7 @@ local function buildRuntime(S)
                     Farm.StuckTitan, Farm.StuckUntil, missStreak = nil, 0, 0
                 end
                 local skip = Farm.StuckTitan
-                local titan = getTitan(skip) or getTitan(nil)
+                local titan = target(skip)
                 local nape = titan and napeOf(titan)
                 local limit = Config.MassiveAttack and math.huge
                     or math.clamp(tonumber(Config.AttackRange) or 2000, 100, 6000)
@@ -2750,15 +2843,16 @@ local function buildRuntime(S)
                 end
                 local speed = tonumber(Config.FlySpeed) or 600
 
-                -- noclip: se pide mientras el farm está activo, para no quedarse en estructuras
+                -- noclip: se pide mientras el farm está activo, para no quedarse en estructuras.
+                -- Se reaplica si cambia el personaje o si el pánico soltó los dueños.
                 local char = player.Character
                 local wantNoclip = Config.NoclipFarm and Config.AutoFarm and CanUseHere() and not Farm.LootBusy and char ~= nil
                 if wantNoclip then
-                    if char ~= noclipChar then
+                    if char ~= noclipChar or not noclipOwners.farm then
                         noclipChar = char
+                        noclipOwners.farm = true
                         setNoClip(true)
                     end
-                    noclipOwners.farm = true
                 elseif noclipOwners.farm then
                     noclipWant("farm", false)
                     noclipChar = nil
@@ -2936,14 +3030,24 @@ local function buildRuntime(S)
 
     RT.skillLoop = function()
         task.wait(3)
+        -- Botones de skill del HUD móvil: fila inferior con etiqueta TAP.
         local function findSkillButtons()
             local list = {}
+            local vp = viewport()
             for _, d in ipairs(playerGui:GetDescendants()) do
-                if d:IsA("GuiButton") and d.Visible and d.AbsoluteSize.X > 18 and d.AbsoluteSize.Y > 18 then
+                if d:IsA("GuiButton") and d.Visible and d.AbsoluteSize.X > 30 and d.AbsoluteSize.Y > 30 then
                     local n = string.lower(d.Name)
-                    if n:find("skill") or n:find("ability") or n:find("move") then
-                        list[#list + 1] = d
+                    local isSkill = (n:find("skill") or n:find("ability") or n:find("move")) and true or false
+                    if not isSkill then
+                        for _, lbl in ipairs(d:GetDescendants()) do
+                            if lbl:IsA("TextLabel") and string.lower((lbl.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")) == "tap" then
+                                isSkill = true
+                                break
+                            end
+                        end
                     end
+                    -- la fila de skills está abajo y centrada
+                    if isSkill and d.AbsolutePosition.Y > vp.Y * 0.68 then list[#list + 1] = d end
                 end
             end
             return list
@@ -2951,13 +3055,13 @@ local function buildRuntime(S)
         while S.ui.gui and S.ui.gui.Parent do
             task.wait(1)
             -- también se calla mientras se recarga
-            if Config.AutoSkill and not RT.refillBusy() then
+            if Config.AutoSkill and CanUseHere() and not RT.refillBusy() then
                 if isMobile then
                     local btns = findSkillButtons()
                     if #btns > 0 then
                         for _, b in ipairs(btns) do
-                            RT.tapGui(b)
-                            task.wait(0.05)
+                            RT.clickIn(b, 50)
+                            task.wait(0.06)
                         end
                     else
                         for _, key in ipairs({ Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five }) do
@@ -2980,7 +3084,7 @@ local function buildRuntime(S)
             task.wait(0.35)
             local ok, err = pcall(function()
                 local allowed = Config.AutoReloadR or Config.AutoRefillBlade
-                -- 1) Recarga rápida con R. Va primero y también en modo wave,
+                -- 1) Recarga rápida. Va primero y también en modo wave,
                 --    porque el camino de estación de abajo se cede a waveLoop.
                 if allowed and CanUseHere() and not Farm.LootBusy and not RT.refillBusy() and RT.bladesEmpty() then
                     if (Farm.BladesEmptyFor or 0) >= 0.35 and canQuickReload() then
@@ -3092,7 +3196,6 @@ local function buildRuntime(S)
                 emptyStart = nil; Farm.BladesEmptyFor = 0
             end
             if wasEmpty and not empty then
-                Farm.ReloadSettleUntil = os.clock() + 3
                 Farm.ReloadRejects = 0
             end
             wasEmpty = empty
@@ -3355,7 +3458,7 @@ local function buildRuntime(S)
         "AutoRefillWave", "AutoCreateRaid", "AutoStartRaid", "AutoSkipCutscene", "AutoOpenChestFree",
         "AutoOpenChestPremium", "AutoFinishChest", "AutoCannon", "MassiveAttack", "AutoPlay", "AutoCreateWave",
         "AutoStartWave", "AutoReady", "AutoVoteSkip", "AutoClearWave", "AutoLeaveAtWave", "AutoLootCrate", "AutoM1",
-        "FarmStrafe",
+        "FarmStrafe", "AutoReloadR", "NoclipFarm",
     }
     local function setFlags(map)
         for _, key in ipairs(TOGGLE_KEYS) do
@@ -3401,7 +3504,7 @@ local function buildTabs(S)
     local groupHeaders, groupOrder = {}, { Combate = 1, Utilidad = 2, Sistema = 3 }
     S.groupHeaders = groupHeaders
 
-    local typedName, selectedName, listDropdown = "", nil, nil
+    local typedName, selectedName, listDropdown = nil, nil, nil
     local currentOptions = { "---" }
 
     local function isFavorite(name) return table.find(Config.Favorites, name) ~= nil end
@@ -3476,12 +3579,21 @@ local function buildTabs(S)
             if t.button.Visible then anyInGroup[t.group] = true end
         end
         for name, holder in pairs(groupHeaders) do holder.Visible = anyInGroup[name] == true end
+        -- con el sidebar colapsado las cabeceras no deben reaparecer al buscar
+        if Config.UICollapsed then
+            for _, holder in pairs(groupHeaders) do holder.Visible = false end
+        end
         if query ~= "" and S.activeTab and not S.activeTab.button.Visible then
             for _, t in ipairs(tabs) do if t.button.Visible then S.selectTab(t) break end end
         end
     end
 
     S.buildPage = function(tab)
+        -- suelta conexiones y suscripciones de la pasada anterior
+        if tab.cleanups then
+            for _, fn in ipairs(tab.cleanups) do pcall(fn) end
+            tab.cleanups = {}
+        end
         for _, child in ipairs(tab.page:GetChildren()) do
             if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then child:Destroy() end
         end
@@ -3545,10 +3657,11 @@ local function buildTabs(S)
 
         local page = new("ScrollingFrame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = V.cardHi, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), Visible = false, ZIndex = 8, Parent = ui.pagesHolder }, { new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }), new("UIPadding", { PaddingBottom = UDim.new(0, 10) }) })
 
-        local tab = { name = name, group = group, subtitle = subtitle, button = button, label = lbl, indicator = indicator, iconHolder = iconHolder, star = star, badge = badge, badgeText = badgeText, page = page, order = 0, keys = {}, loaded = false, buildFunc = buildFunc }
+        local tab = { name = name, group = group, subtitle = subtitle, button = button, label = lbl, indicator = indicator, iconHolder = iconHolder, star = star, badge = badge, badgeText = badgeText, page = page, order = 0, keys = {}, cleanups = {}, loaded = false, buildFunc = buildFunc }
         tabByName[name] = tab
 
         local api = {}
+        local function cleanup(fn) table.insert(tab.cleanups, fn) end
         local function row(height, transparent)
             tab.order += 1
             local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 38), BackgroundColor3 = V.card, BackgroundTransparency = transparent and 1 or 0.18, BorderSizePixel = 0, LayoutOrder = tab.order, ZIndex = 9, Parent = page }, { corner(9) })
@@ -3601,6 +3714,7 @@ local function buildTabs(S)
             local unsub = EventBus:On("ConfigChanged", function(k, v)
                 if k == key and v ~= state then state = v render(true) end
             end)
+            cleanup(unsub)
             regContext(btn, opts.requires)
             return {
                 set = function(v) state = v and true or false; Config[key] = state; render(true); EventBus:Emit("ConfigChanged", key, state) end,
@@ -3641,18 +3755,24 @@ local function buildTabs(S)
                     drag = true; update(input.Position.X, true)
                 end
             end)
-            UserInputService.InputEnded:Connect(function(input)
+            local endConn = UserInputService.InputEnded:Connect(function(input)
                 if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and drag then
                     update(input.Position.X, true); drag = false
                 end
             end)
-            UserInputService.InputChanged:Connect(function(input)
+            local moveConn = UserInputService.InputChanged:Connect(function(input)
                 if drag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then update(input.Position.X) end
             end)
             local unsub = EventBus:On("ConfigChanged", function(k, v)
                 if k ~= key or drag or type(v) ~= "number" then return end
                 local a = math.clamp((v - min) / math.max(max - min, 0.001), 0, 1)
                 fill.Size = UDim2.fromScale(a, 1); thumb.Position = UDim2.new(a, 0, 0.5, 0); valueLabel.Text = tostring(v)
+            end)
+            -- sin esto cada reconstrucción dejaba dos conexiones globales vivas
+            cleanup(function()
+                pcall(function() endConn:Disconnect() end)
+                pcall(function() moveConn:Disconnect() end)
+                if unsub then unsub() end
             end)
             return {
                 set = function(v)
@@ -3724,6 +3844,7 @@ local function buildTabs(S)
             local unsub = EventBus:On("ConfigChanged", function(k, v)
                 if k == key and type(v) == "string" and v ~= current then current = v; curLabel.Text = v .. "  ▾" end
             end)
+            cleanup(unsub)
             return {
                 set = function(v) current = v; Config[key] = v; curLabel.Text = tostring(v) .. "  ▾"; EventBus:Emit("ConfigChanged", key, v) end,
                 get = function() return current end,
@@ -3893,7 +4014,7 @@ local function buildTabs(S)
             end
             S.notify("Auto Farm", s and "Activado" or "Desactivado", 2)
         end, { requires = "game", tip = "Vuela al titán más cercano y golpea las nucas en rango" })
-        api.Toggle("Auto Skill", "AutoSkill", function(s) S.notify("Auto Skill", s and "Activado" or "Desactivado", 2) end, { requires = "game", tip = "Pulsa las skills 1-5 en bucle" })
+        api.Toggle("Auto Skill", "AutoSkill", function(s) S.notify("Auto Skill", s and "Activado" or "Desactivado", 2) end, { requires = "game", tip = "Pulsa las skills 1-5 (en móvil, los botones TAP)" })
         api.Toggle("Noclip en farm", "NoclipFarm", function(s)
             S.notify("Noclip", s and "ON (no te trabas)" or "OFF", 2)
             if not s then RT.noclipOff() end
@@ -3902,7 +4023,7 @@ local function buildTabs(S)
         api.Section("Auto M1")
         api.Toggle("Auto M1 (PC y móvil)", "AutoM1", function(s)
             S.notify("Auto M1", s and "Activado (ataca solo)" or "Desactivado", 2)
-        end, { requires = "game", tip = "Mantiene el ataque pulsado sin tocar la pantalla" })
+        end, { requires = "game", tip = "Mantiene el ataque pulsado; en móvil usa el botón M1" })
         api.Dropdown("Modo de ataque", S.M1_MODES, "M1Mode", function(option)
             S.notify("Auto M1", "Modo: " .. option, 2)
         end)
@@ -3913,7 +4034,7 @@ local function buildTabs(S)
             local ok = RT.screenTap()
             S.notify("Auto M1", ok and "Toque enviado" or "El ejecutor no acepta toques", 2)
         end)
-        api.Label("Remoto: golpea por remotos, no toca la pantalla ni mueve el cursor (por defecto). Toque: pulsa en pantalla como un dedo. Toque + Remoto: las dos cosas, solo si el remoto te va mal.", 48)
+        api.Label("Remoto: golpea por remotos, no toca la pantalla ni mueve el cursor (por defecto). Toque: pulsa el botón M1 real en móvil o el punto configurado en PC. Toque + Remoto: las dos cosas, solo si el remoto te va mal.", 52)
 
         api.Section("Ajustes de vuelo")
         api.Slider("Velocidad", 100, 1500, "FlySpeed")
@@ -4124,8 +4245,8 @@ local function buildTabs(S)
     S.addTab("Refill", "Utilidad", "refill", "Relleno de equipo", function(api)
         api.Section("Recarga de blades")
         api.Toggle("Auto Reload R", "AutoReloadR", function(s)
-            S.notify("Auto Reload R", s and "ON (pulsa R solo)" or "OFF", 2)
-        end, { requires = "game", tip = "Al quedarte a 0 blades con repuestos: pausa el ataque, sigue volando y pulsa R solo" })
+            S.notify("Auto Reload R", s and (isMobile and "ON (pulsa REFILL solo)" or "ON (pulsa R solo)") or "OFF", 2)
+        end, { requires = "game", tip = "Al quedarte a 0 blades con repuestos: pausa el ataque, sigue volando y recarga solo" })
         api.Toggle("Auto Refill Blades", "AutoRefillBlade", function(s) S.notify("Refill Blades", s and "Activado" or "Desactivado", 2) end, { requires = "game", tip = "Igual que el anterior y, sin repuestos, va a la estación" })
         api.Toggle("Auto Refill Thunder", "AutoRefillThunder", function(s) S.notify("Refill Thunder", s and "Activado" or "Desactivado", 2) end, { requires = "game" })
         api.Section("Ajustes")
@@ -4134,12 +4255,23 @@ local function buildTabs(S)
         api.Slider("Altura de aproximación", 0, 12, "RefillHeight")
         api.Label("Studs por encima de la estación al recargar. Súbelo a 6-10 si el prompt queda dentro de una pared o un gate. La altura de crucero del farm se conserva y se restaura al volver.", 44)
         api.Label("Sin cargas en la estación el personaje sigue volando y atacando; a los 6 s prueba la estación igual por si el contador está desfasado.", 30)
+        api.Section("Móvil")
+        api.Button("Probar botón REFILL ahora", function()
+            if not isMobile then S.notify("Refill", "Esto es para móvil; en PC se usa la R", 2) return end
+            local btn = RT.findRefillButton()
+            local ok = RT.tapRefill()
+            S.notify("Refill", ok and (btn and "Botón REFILL pulsado" or "Toque de respaldo enviado") or "No encuentro el botón REFILL", 2)
+        end)
+        api.Slider("Posición REFILL X (%)", 50, 98, "RefillPosX")
+        api.Slider("Posición REFILL Y (%)", 40, 95, "RefillPosY")
+        api.Label("En móvil no existe la tecla R: la recarga se hace pulsando el botón REFILL de la pantalla. El script lo busca por texto; si tu HUD lo tiene con otro nombre, usa la posición de respaldo (89/70 por defecto, justo el botón de la derecha).", 48)
         api.Button("Refill manual (1 vez)", function()
             local assets = ReplicatedStorage:FindFirstChild("Assets")
             local remotes = assets and assets:FindFirstChild("Remotes")
             local post = remotes and remotes:FindFirstChild("POST")
             if post then
                 pcall(function() post:FireServer("Attacks", "Reload") end)
+                if isMobile then RT.tapRefill() end
                 S.notify("Refill", "Ejecutado", 2)
             else
                 S.notify("Refill", "POST no encontrado", 2)
@@ -4225,7 +4357,9 @@ local function buildTabs(S)
             holder.set(table.concat(lines, "\n"))
         end
         render()
-        EventBus:On("LogAdded", render)
+        local unsubLog = EventBus:On("LogAdded", render)
+        -- se guarda en la lista de limpieza del tab activo
+        table.insert(S.activeTab.cleanups, unsubLog)
         api.Button("Copiar al portapapeles", function()
             local lines = {}
             for _, entry in ipairs(LogHistory) do
@@ -4268,11 +4402,14 @@ local function buildTabs(S)
         api.Button("Copiar informe", function()
             local text = table.concat({
                 "place=" .. tostring(game.PlaceId),
+                "mobile=" .. tostring(isMobile),
                 "ctx=" .. ContextKind(),
                 "actor=" .. tostring(S.Farm.ActorActive and S.Farm.ActorActive()),
                 "segments=" .. tostring(S.Farm.ActorSegments and S.Farm.ActorSegments()),
                 "reloads=" .. tostring(S.Farm.ActorReloads and S.Farm.ActorReloads()),
                 "refills=" .. tostring(RT.refillsLeft()),
+                "refillbtn=" .. tostring(RT.findRefillButton and RT.findRefillButton() ~= nil),
+                "refillpos=" .. tostring(Config.RefillPosX) .. "x" .. tostring(Config.RefillPosY),
                 "lock=" .. tostring(S.Farm.LockKind),
                 "hardmove=" .. tostring(S.Farm.HardMove),
                 "flyheight=" .. tostring(Config.FlyHeight),
@@ -4307,11 +4444,17 @@ local function buildTabs(S)
     end)
 
     S.addTab("Config", "Sistema", "config", "Perfiles guardados", function(api)
+        -- recuperar la selección y el nombre de la sesión anterior
+        if not typedName and type(Config._TypedName) == "string" then typedName = Config._TypedName end
+        if not selectedName and type(Config._SelectedConfig) == "string" and Config._SelectedConfig ~= "---" then
+            selectedName = Config._SelectedConfig
+        end
         api.Section("Configuración activa")
         local activeStat = api.Stat("Activa")
         local autoStat = api.Stat("Autoload")
         activeStat.set(ConfigStore.Active() or "none")
         autoStat.set(ConfigStore.Autoload() or "none")
+        -- el estado real del autosync manda sobre lo que haya en Config
         Config._AutoSync = ConfigStore.AutoSync()
         api.Toggle("Auto-sync a config activa", "_AutoSync", function(state)
             ConfigStore.SetAutoSync(state)
@@ -4326,6 +4469,8 @@ local function buildTabs(S)
             if ConfigStore.IsDefault(name) then S.notify("Config", "No se puede sobrescribir la default", 2) return end
             if ConfigStore.Put(name, ConfigStore.Snapshot()) then
                 ConfigStore.SetActive(name)
+                selectedName = name
+                Config._SelectedConfig = name
                 activeStat.set(name)
                 S.notify("Config", "Guardada: " .. name, 2)
                 S.buildPage(tabByName["Config"])
@@ -4398,7 +4543,7 @@ local function buildTabs(S)
         local KEY_OPTIONS = {
             "RightShift", "LeftShift", "RightControl", "LeftControl", "Insert", "Home", "End", "PageUp", "PageDown",
             "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-            "Z", "X", "C", "V", "B", "N", "M", "K", "J", "H", "G", "Y", "U", "P", "O", "I", "Q", "T", "R",
+            "Z", "X", "C", "V", "B", "N", "M", "K", "J", "H", "G", "Y", "U", "P", "O", "I", "Q", "T",
         }
         api.Dropdown("Tecla para abrir/cerrar", KEY_OPTIONS, "Keybind", function(option)
             keyLabel.set("Actual: " .. option)
@@ -4414,7 +4559,7 @@ local function buildTabs(S)
             keyLabel.set("Actual: RightShift")
             S.notify("Tecla", "Menú: RightShift", 2)
         end)
-        api.Label("Si eliges R, se solapará con la recarga de blades.")
+        api.Label(isMobile and "En móvil el menú se abre con el botón flotante 'C'." or "Si eliges R, se solapará con la recarga de blades.")
 
         api.Section("Hotkeys de feature")
         local HOT_OPTIONS = { "—", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "Z", "X", "C", "V", "B", "G", "H", "J", "K", "L", "N", "M" }
@@ -4541,6 +4686,14 @@ local function boot(S)
                 local okH, hk = pcall(function() return Enum.KeyCode[keyName] end)
                 if okH and hk and input.KeyCode == hk then
                     Config[feature] = not Config[feature]
+                    -- misma exclusión mutua que el toggle del panel
+                    if feature == "AutoFarm" and Config.AutoFarm and Config.AutoClearWave then
+                        Config.AutoClearWave = false
+                        EventBus:Emit("ConfigChanged", "AutoClearWave", false)
+                    elseif feature == "AutoClearWave" and Config.AutoClearWave and Config.AutoFarm then
+                        Config.AutoFarm = false
+                        EventBus:Emit("ConfigChanged", "AutoFarm", false)
+                    end
                     EventBus:Emit("ConfigChanged", feature, Config[feature])
                     S.notify("Hotkey", feature .. ": " .. (Config[feature] and "ON" or "OFF"), 1.5)
                     return
@@ -4737,8 +4890,8 @@ local function boot(S)
     if startTab then S.selectTab(startTab) end
     if S.syncMobile then S.syncMobile() end
 
-    S.notify("CASPER HUB PREMIUM v15.7", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
-    print("[CASPER HUB PREMIUM v15.7] Cargado con éxito.")
+    S.notify("CASPER HUB PREMIUM v15.8", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
+    print("[CASPER HUB PREMIUM v15.8] Cargado con éxito.")
 end
 
 -- ============================================================
