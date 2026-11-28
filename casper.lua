@@ -1,7 +1,15 @@
 --[[
-  CASPER HUB PREMIUM — v15.10
+  CASPER HUB PREMIUM — v15.11
   Móvil/PC + Delta/Xeno.
 
+  v15.11:
+   · fix móvil: lectura de blades por rig completo y respaldo por golpes si no hay lectura
+   · fix móvil: sin botón REFILL en pantalla se va directo a la estación (sin 6 s de toques al aire)
+   · fix estación: búsqueda priorizada, rebarrido limitado a 4 s y streaming forzado al destino
+   · fix estación: noclip al viajar, recolocación dura y segundo empujón de recarga en móvil
+   · fix estación: reintento en otra estación distinta a la última
+   · refill verificado también por caída del contador, no solo por blades
+   · fix: la recarga rápida ya no se bloquea 20 s en móvil (8 s y solo si el botón existe)
   v15.10:
    · fix móvil: la recarga salta con 2/3 blades (umbral ajustable 1-3), ya no espera a 0
    · fix móvil: el botón REFILL se busca por nombre y texto dentro de los labels hijos
@@ -485,6 +493,13 @@ local function pushLog(title, message)
 end
 
 local CHANGELOG = {
+    "15.11 · fix móvil: lectura de blades por rig completo y respaldo por golpes si no hay lectura",
+    "15.11 · fix móvil: sin botón REFILL en pantalla se va directo a la estación",
+    "15.11 · fix estación: búsqueda priorizada, rebarrido limitado a 4 s y streaming forzado",
+    "15.11 · fix estación: noclip al viajar, recolocación dura y segundo empujón en móvil",
+    "15.11 · fix estación: reintento en otra estación distinta a la última",
+    "15.11 · refill verificado por caída del contador, no solo por blades",
+    "15.11 · la recarga rápida se bloquea 8 s en móvil y solo si el botón existe",
     "15.10 · fix móvil: la recarga salta con 2/3 blades (umbral ajustable), ya no espera a 0",
     "15.10 · fix móvil: el botón REFILL se localiza por nombre y texto, no solo por texto exacto",
     "15.10 · fix móvil: el punto de respaldo del REFILL baja al 55% (antes caía debajo del botón)",
@@ -554,7 +569,7 @@ local function buildLoader()
     local monogram = new("TextLabel", { Text = "C", Font = Enum.Font.GothamBlack, TextSize = 19, TextColor3 = Color3.new(1, 1, 1), TextTransparency = 1, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = logo })
 
     local title = new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 17, TextColor3 = Color3.fromRGB(245, 247, 255), TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 74), Size = UDim2.new(1, 0, 0, 20), ZIndex = 4, Parent = card })
-    local sub = new("TextLabel", { Text = "PREMIUM · v15.10", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
+    local sub = new("TextLabel", { Text = "PREMIUM · v15.11", Font = Enum.Font.GothamBold, TextSize = 9, TextColor3 = accent, TextTransparency = 1, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 93), Size = UDim2.new(1, 0, 0, 13), ZIndex = 4, Parent = card })
 
     local stepLabel = new("TextLabel", { Text = "Iniciando", Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = Color3.fromRGB(150, 158, 184), TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, Position = UDim2.fromOffset(22, 122), Size = UDim2.new(1, -100, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4, Parent = card })
     local percentLabel = new("TextLabel", { Text = "0%", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = accent, TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1, Position = UDim2.new(1, -70, 0, 122), Size = UDim2.fromOffset(48, 14), ZIndex = 4, Parent = card })
@@ -614,7 +629,7 @@ if not isKeyVerified then
     local keyGui = new("ScreenGui", { Name = "KeySystem", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = playerGui })
     local kf = new("Frame", { Size = UDim2.fromOffset(340, 268), Position = UDim2.new(0.5, -170, 0.5, -134), BackgroundColor3 = THEME.bg, BorderSizePixel = 0, Parent = keyGui }, { corner(18), new("UIStroke", { Color = THEME.accent, Thickness = 1.5, Transparency = 0.3 }) })
     new("TextLabel", { Text = "CASPER HUB", Font = Enum.Font.GothamBlack, TextSize = 25, TextColor3 = THEME.text, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 34), Parent = kf })
-    new("TextLabel", { Text = "PREMIUM · v15.10", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
+    new("TextLabel", { Text = "PREMIUM · v15.11", Font = Enum.Font.GothamBlack, TextSize = 11, TextColor3 = THEME.accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 64), Size = UDim2.new(1, 0, 0, 16), Parent = kf })
     new("TextLabel", { Text = "Introduce tu key de acceso", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = THEME.subtext, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 92), Size = UDim2.new(1, 0, 0, 18), Parent = kf })
     local tb = new("TextBox", { Text = "", PlaceholderText = "CASPER-XXXX", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = THEME.text, BackgroundColor3 = THEME.item, BorderSizePixel = 0, Position = UDim2.fromOffset(24, 124), Size = UDim2.new(1, -48, 0, 42), Parent = kf, ClearTextOnFocus = false }, { corner(10), new("UIStroke", { Color = Color3.fromRGB(50, 50, 70), Thickness = 1, Transparency = 0.3 }) })
     local sl = new("TextLabel", { Text = "", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Color3.fromRGB(255, 90, 90), BackgroundTransparency = 1, Position = UDim2.fromOffset(24, 174), Size = UDim2.new(1, -48, 0, 20), Parent = kf })
@@ -934,7 +949,7 @@ local function buildShell(S)
     ui.chipText = H.label(ui.chipHolder, "micro", "—", { Position = UDim2.fromOffset(19, 0), Size = UDim2.fromOffset(80, 20), TextColor3 = V.sub, ZIndex = 9 })
 
     local verBadge = new("Frame", { Size = UDim2.fromOffset(46, 18), Position = UDim2.fromOffset(186, 45), BackgroundColor3 = THEME.accent, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(9) }); H.bindAccent(verBadge, "BackgroundColor3")
-    H.label(verBadge, "micro", "v15.10", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
+    H.label(verBadge, "micro", "v15.11", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.new(1, 1, 1), ZIndex = 9 })
 
     local profile = new("Frame", { Size = UDim2.fromOffset(184, 40), Position = UDim2.new(1, -318, 0.5, -20), BackgroundColor3 = V.card, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 8, Parent = header }, { corner(20) })
     H.stroke(profile, V.strokeHi, 1, 0.5)
@@ -1211,7 +1226,8 @@ local function buildRuntime(S)
     local H = S.H
     S.Farm = { Refilling = false, ReloadRejects = 0, BladesEmptyFor = 0, ActorSegments = nil, ActorReloads = nil, ActorActive = nil, SpearStuck = false, RecentlyRefilled = 0, LootBusy = false,
         QuickReload = false, QuickFailed = 0, HoverPos = nil, QuickTries = 0, LockKind = nil, LockUntil = 0, NoRefills = false, MissStreak = 0, NoStation = false,
-        HardMove = false, ZeroSince = 0, CruiseY = nil, LiveAlt = nil, StuckTitan = nil, StuckUntil = 0 }
+        HardMove = false, ZeroSince = 0, CruiseY = nil, LiveAlt = nil, StuckTitan = nil, StuckUntil = 0,
+        HitsSinceRefill = 0, BladeGraceUntil = 0, LastStation = nil, LastRefills = nil }
     local Farm = S.Farm
     local RT = S.RT
     local VALID_KEYS = { W = true, A = true, S = true, D = true, L = true }
@@ -1531,6 +1547,7 @@ local function buildRuntime(S)
             end
         end)
         if not okA then return false end
+        Farm.HitsSinceRefill = (Farm.HitsSinceRefill or 0) + 1
         task.wait(0.03)
         pcall(function() post:FireServer("Attacks", "Slash", false) end)
         return true
@@ -1594,14 +1611,34 @@ local function buildRuntime(S)
         [15220308770] = { "Climbable", "Utgard" }, [17688739434] = { "Unclimbable", "World", "Buildings", "Hanger" },
         [15824912319] = { "Unclimbable", "Props", "HQ" }, [126678335159530] = { "Unclimbable", "Reloads" },
     }
-    local stations = nil
+    local stations, stationsPlace, stationsAt = nil, nil, 0
+
+    local function isStation(inst)
+        local n = string.lower(inst.Name)
+        if n == "refill" or n == "reload" then return true end
+        if n:find("refill", 1, true) or n:find("station", 1, true) then return true end
+        local p = inst:FindFirstChildOfClass("ProximityPrompt")
+        if p then
+            local t = string.lower(tostring(p.ActionText or "")) .. " " .. string.lower(tostring(p.ObjectText or ""))
+            if t:find("refill", 1, true) or t:find("reload", 1, true) or t:find("recarg", 1, true) then return true end
+        end
+        return false
+    end
+
+    local function stationRank(st)
+        local n = string.lower(st.Name)
+        if n == "refill" or n == "reload" then return 1 end
+        if st:FindFirstChildOfClass("ProximityPrompt") then return 2 end
+        if n:find("refill", 1, true) then return 3 end
+        return 4
+    end
 
     local function collect(container)
         local list, n = {}, 0
         for _, d in ipairs(container:GetDescendants()) do
             n += 1
-            if n % 500 == 0 then task.wait() end
-            if d.Name == "Refill" then list[#list + 1] = d end
+            if n % 400 == 0 then task.wait() end
+            if isStation(d) then list[#list + 1] = d end
         end
         return list
     end
@@ -1616,18 +1653,24 @@ local function buildRuntime(S)
         return ok and pos or nil
     end
 
-    local function nearestStation(root)
-        local valid = stations and #stations > 0
-        if valid then
-            for _, st in ipairs(stations) do if not st.Parent then valid = false break end end
+    -- El mapa se rebarre como mucho cada 4 s: antes se recorría Workspace
+    -- entero en cada intento y con streaming la estación ni existía todavía.
+    local function nearestStation(root, avoid, force)
+        if stationsPlace ~= game.PlaceId then
+            stations, stationsPlace, stationsAt = nil, game.PlaceId, 0
         end
-        if not valid then
-            stations = {}
-            local uncl = Workspace:FindFirstChild("Unclimbable")
-            local obj = uncl and uncl:FindFirstChild("Objective")
-            local waveFolder = obj and obj:FindFirstChild("Waves")
-            if waveFolder then stations = collect(waveFolder) end
-            if #stations == 0 then
+        local usable = {}
+        for _, st in ipairs(stations or {}) do
+            if st.Parent then usable[#usable + 1] = st end
+        end
+        if (#usable == 0 or force) and (force or os.clock() - stationsAt >= 4) then
+            stationsAt = os.clock()
+            usable = {}
+            local u = Workspace:FindFirstChild("Unclimbable")
+            local o = u and u:FindFirstChild("Objective")
+            local wf = o and o:FindFirstChild("Waves")
+            if wf then usable = collect(wf) end
+            if #usable == 0 then
                 local container = Workspace
                 local path = REFILL_PLACES[game.PlaceId]
                 if path then
@@ -1635,39 +1678,64 @@ local function buildRuntime(S)
                     for _, name in ipairs(path) do cur = cur and cur:FindFirstChild(name) end
                     if cur then container = cur end
                 end
-                stations = collect(container)
-                if #stations == 0 and container ~= Workspace then stations = collect(Workspace) end
+                usable = collect(container)
+                if #usable == 0 and container ~= Workspace then usable = collect(Workspace) end
             end
+            stations = usable
         end
-        local best, bestDist = nil, math.huge
-        for _, st in ipairs(stations) do
+        local best, bestKey, alt, altKey = nil, nil, nil, nil
+        for _, st in ipairs(usable) do
             local pos = posOf(st)
             if pos then
-                local d = (pos - root.Position).Magnitude
-                if d < bestDist then best, bestDist = st, d end
+                local key = stationRank(st) * 100000 + (pos - root.Position).Magnitude
+                if st == avoid then
+                    if not altKey or key < altKey then alt, altKey = st, key end
+                elseif not bestKey or key < bestKey then best, bestKey = st, key end
             end
         end
-        return best
+        return best or alt
     end
 
-    local function rig() local char = player.Character return char and char:FindFirstChild("Rig_" .. player.Name) end
+    local function rig()
+        local char = player.Character
+        if not char then return nil end
+        return char:FindFirstChild("Rig_" .. player.Name) or char
+    end
 
+    -- Se aceptan Blade, Blade_1, Blade2... y el sufijo _Broken.
+    -- Antes solo valía ^Blade_%d+$ colgado de las manos: si el juego cambiaba
+    -- el nombre o movía las hojas, el recuento daba 0 y no se recargaba nunca.
     local function bladeParts()
         local r = rig()
+        if not r then return {} end
         local list = {}
-        for _, handName in ipairs({ "RightHand", "LeftHand" }) do
-            local hand = r and r:FindFirstChild(handName)
-            for _, d in ipairs(hand and hand:GetChildren() or {}) do
-                if d.Name:match("^Blade_%d+$") then list[#list + 1] = d end
+        local function scan(container)
+            for _, d in ipairs(container:GetChildren()) do
+                local n = string.lower(d.Name)
+                if n:find("blade", 1, true) and not n:find("broken", 1, true) then
+                    list[#list + 1] = d
+                end
             end
         end
+        for _, handName in ipairs({ "RightHand", "LeftHand" }) do
+            local hand = r:FindFirstChild(handName)
+            if hand then scan(hand) end
+        end
+        if #list == 0 then scan(r) end
         return list
+    end
+
+    local function isBrokenPart(p)
+        if p:GetAttribute("Broken") == true then return true end
+        if string.lower(p.Name):find("broken", 1, true) then return true end
+        local hum = p:FindFirstChildOfClass("Humanoid")
+        return hum ~= nil and hum.Health <= 0
     end
 
     local function allBroken()
         local parts = bladeParts()
         if #parts == 0 then return false end
-        for _, p in ipairs(parts) do if not p:GetAttribute("Broken") then return false end end
+        for _, p in ipairs(parts) do if not isBrokenPart(p) then return false end end
         return true
     end
 
@@ -1678,6 +1746,9 @@ local function buildRuntime(S)
         return nil
     end
 
+    -- Slashes por blade cuando no hay ninguna lectura posible.
+    local HITS_PER_BLADE = 8
+
     -- Respaldo por partes equipadas, para cuando el actor no está enlazado
     -- (móvil con ejecutores sin getactors). Devuelve total, intactas.
     local function bladeStats()
@@ -1685,29 +1756,31 @@ local function buildRuntime(S)
         local total, intact = 0, 0
         for _, p in ipairs(parts) do
             total += 1
-            if not p:GetAttribute("Broken") then intact += 1 end
+            if not isBrokenPart(p) then intact += 1 end
         end
         return total, intact
     end
 
-    -- Los segmentos del loadout son la fuente fiable. allBroken() marca "rota" en
-    -- cuanto la parte equipada se gasta aunque queden 2 o 3 blades útiles, y eso
-    -- disparaba viajes a la estación sin necesidad.
     RT.bladesEmpty = function()
         local seg = RT.bladeCount()
         if seg ~= nil then return seg <= 0 end
-        return allBroken()
+        local total, intact = bladeStats()
+        if total > 0 then return intact <= 0 end
+        -- sin partes legibles: se cuenta por golpes
+        return (Farm.HitsSinceRefill or 0) >= HITS_PER_BLADE
     end
 
     -- Umbral de recarga: por defecto a 2 blades o menos, no solo a 0.
-    -- Con 2/3 la recarga también salta, que es lo que se pide en móvil.
+    -- Si no hay forma de leer (ni actor ni partes), el respaldo por golpes
+    -- garantiza que la recarga salga igualmente.
     RT.bladesLow = function()
         local limit = math.clamp(tonumber(Config.RefillAtBlades) or 2, 1, 3)
         local seg = RT.bladeCount()
         if seg ~= nil then return seg <= limit end
         local total, intact = bladeStats()
         if total > 0 then return intact <= limit end
-        return allBroken()
+        if os.clock() < (Farm.BladeGraceUntil or 0) then return false end
+        return (Farm.HitsSinceRefill or 0) >= math.max(1, 3 - limit) * HITS_PER_BLADE
     end
 
     RT.spearsLeft = function()
@@ -1757,9 +1830,11 @@ local function buildRuntime(S)
         if canQuickReload() then return false end
         local sp = spareLeft()
         if sp == 0 then return true end
-        -- si la recarga rápida ya falló, cae a la estación
         if os.clock() < (Farm.QuickFailed or 0) then return true end
-        if sp == nil then return (Farm.ReloadRejects or 0) >= 2 or (Farm.BladesEmptyFor or 0) >= 5 end
+        -- sin lectura de repuestos (móvil): no se insiste con el toque para siempre
+        if sp == nil then
+            return (Farm.QuickTries or 0) >= 2 or (Farm.ReloadRejects or 0) >= 1 or (Farm.BladesEmptyFor or 0) >= 3
+        end
         return true
     end
     -- Con Auto Reload R solo (sin Auto Refill Blades) también se va a la estación
@@ -1928,6 +2003,8 @@ local function buildRuntime(S)
         Farm.ReloadRejects = 0
         Farm.ZeroSince = 0
         Farm.QuickFailed = 0
+        Farm.HitsSinceRefill = 0
+        Farm.BladeGraceUntil = os.clock() + 3
     end
 
     -- Bloqueo de refill con caducidad: evita que un flag se quede pegado
@@ -1960,25 +2037,34 @@ local function buildRuntime(S)
 
     -- Recarga rápida: botón REFILL en móvil, R en PC.
     -- Pausa el ataque pero el personaje se queda volando donde estaba.
-    local QUICK_TRIES = 4
     local function quickBladeReload()
         local root = getRoot()
         if not root then return false end
-        RT.lockRefill("quick", 2 + QUICK_TRIES * 2.2)
+        -- En móvil, si el botón REFILL no está en pantalla el toque cae al aire:
+        -- se salta el intento y se va directo a la estación.
+        if isMobile and not findRefillButton() then
+            Farm.QuickFailed = os.clock() + 8
+            return false
+        end
+        local tries = isMobile and 2 or 4
+        RT.lockRefill("quick", 2 + tries * 2.2)
         Farm.QuickReload = true
         Farm.QuickTries = 0
         Farm.HoverPos = CFrame.new(root.Position)
         local ok = false
         pcall(function()
-            for _ = 1, QUICK_TRIES do
+            for _ = 1, tries do
                 if not Alive() then break end
                 local r = getRoot()
                 if not r then break end
                 Farm.QuickTries += 1
+                local beforeRefills = RT.refillsLeft()
                 pressReload(nil)
                 local t0 = os.clock()
                 while os.clock() - t0 < 1.4 do
                     if not RT.bladesLow() then ok = true break end
+                    local nowRefills = RT.refillsLeft()
+                    if beforeRefills ~= nil and nowRefills ~= nil and nowRefills < beforeRefills then ok = true break end
                     if not Alive() then break end
                     task.wait(0.1)
                 end
@@ -2018,36 +2104,70 @@ local function buildRuntime(S)
         local pos = promptPos(prompt, station)
         local back = root.Position
         local approach = Vector3.new(0, math.clamp(tonumber(Config.RefillHeight) or 3, 0, 12), 0)
+        local beforeRefills = RT.refillsLeft()
+        local function dropped()
+            local now = RT.refillsLeft()
+            return beforeRefills ~= nil and now ~= nil and now < beforeRefills
+        end
+
+        -- sin noclip el personaje se queda clavado en la pared de la estación
+        if RT.noclipWant then RT.noclipWant("refill", true) end
 
         if pos then
             Farm.CruiseY = back.Y
             Farm.HardMove = true
             Farm.HoverPos = CFrame.new(pos)
+            pcall(function() player:RequestStreamAroundAsync(pos, 1) end)
             tweenToPos(root, pos + approach, speed or Config.RefillSpeed)
             task.wait(0.25)
             root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-            if not root then Farm.HardMove = false return false end
-            -- si el tween se quedó corto, se recoloca en duro
+            if not root then
+                Farm.HardMove = false
+                if RT.noclipWant then RT.noclipWant("refill", false) end
+                return false
+            end
+            -- si el tween se quedó corto o el choque lo empujó, se recoloca en duro
             if (root.Position - pos).Magnitude > 12 then
                 pcall(function() root.CFrame = CFrame.new(pos + approach) end)
-                task.wait(0.15)
+                task.wait(0.2)
+                if (root.Position - pos).Magnitude > 12 then
+                    pcall(function() root.CFrame = CFrame.new(pos + approach) end)
+                    task.wait(0.1)
+                end
             end
         end
 
         local post = getPost()
-        if post then pcall(function() post:FireServer("Attacks", "Reload", station) end) end
-        if prompt then
-            pressPrompt(prompt)
-            task.wait(0.15)
+        local function fireRemote()
+            if post then pcall(function() post:FireServer("Attacks", "Reload", station) end) end
         end
+
+        fireRemote()
+        if prompt then pressPrompt(prompt) task.wait(0.15) end
         pressReload(prompt)
-        task.wait(0.35)
-        if post then pcall(function() post:FireServer("Attacks", "Reload", station) end) end
+        task.wait(0.4)
+        fireRemote()
 
-        -- en móvil el toque tarda más en registrarse
-        local ok = waitNeeded(isMobile and 6 or 4, needFn)
+        -- en móvil el toque se pierde con facilidad: segundo empujón periódico
+        local ok = false
+        local deadline = os.clock() + (isMobile and 8 or 5)
+        local lastPush = os.clock()
+        while os.clock() < deadline do
+            if not needFn() then ok = true break end
+            if dropped() then ok = true break end
+            if isMobile and os.clock() - lastPush >= 2.2 then
+                lastPush = os.clock()
+                if prompt then pcall(pressPrompt, prompt) end
+                pressReload(prompt)
+                fireRemote()
+            end
+            task.wait(0.2)
+        end
+        if not ok then
+            if not needFn() then ok = true end
+            if dropped() then ok = true end
+        end
 
-        -- vuelta a la posición y altura de crucero previas
         local r2 = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         if r2 then
             local target = back
@@ -2057,6 +2177,7 @@ local function buildRuntime(S)
             tweenToPos(r2, target, speed or Config.RefillSpeed)
         end
         Farm.HardMove = false
+        if RT.noclipWant then RT.noclipWant("refill", false) end
         return ok
     end
 
@@ -2068,10 +2189,16 @@ local function buildRuntime(S)
             local now = RT.refillsLeft()
             return before ~= nil and now ~= nil and now < before
         end
-        for _ = 1, REFILL_TRIES do
+        for attempt = 1, REFILL_TRIES do
             local root = getRoot()
             if not root then break end
-            local station = nearestStation(root)
+            local station = nearestStation(root, attempt > 1 and Farm.LastStation or nil)
+            if not station then
+                -- puede no estar en streaming todavía: se fuerza y se reintenta
+                pcall(function() player:RequestStreamAroundAsync(root.Position, 1) end)
+                task.wait(0.6)
+                station = nearestStation(root, nil, true)
+            end
             if not station then
                 if not Farm.NoStation then
                     Farm.NoStation = true
@@ -2080,6 +2207,7 @@ local function buildRuntime(S)
                 break
             end
             Farm.NoStation = false
+            Farm.LastStation = station
             if tryStationReload(station, Config.RefillSpeed) then
                 markRefilled()
                 return true
@@ -2521,7 +2649,7 @@ local function buildRuntime(S)
                 if Farm.LootBusy then setClear("Pausado (caja)") return end
                 -- refillBusy caduca solo: nunca deja esto pegado
                 if Farm.LockKind == "quick" and RT.refillBusy() then
-                    setClear(("Recargando blades (%d/%d)"):format(Farm.QuickTries or 0, QUICK_TRIES))
+                    setClear(("Recargando blades (%d)"):format(Farm.QuickTries or 0))
                     return
                 end
                 if RT.refillBusy() then setClear("Pausado (recarga)") return end
@@ -2681,7 +2809,7 @@ local function buildRuntime(S)
         end
     end
 
-    -- Noclip con dueños: loot y farm pueden pedirlo a la vez sin pisarse.
+    -- Noclip con dueños: loot, farm y refill pueden pedirlo a la vez sin pisarse.
     local noclipOwners = {}
     local function noclipWant(owner, on)
         local had = noclipOwners[owner] == true
@@ -2698,6 +2826,7 @@ local function buildRuntime(S)
         noclipOwners = {}
         setNoClip(false)
     end
+    RT.noclipWant = noclipWant
 
     local function flyTo(targetPos, maxTime)
         local r0 = liveRoot()
@@ -2935,6 +3064,7 @@ local function buildRuntime(S)
                 if root ~= lastRoot then
                     lastRoot, lastY, refillHold = root, nil, nil
                     Farm.StuckTitan, Farm.StuckUntil, Farm.MissStreak = nil, 0, 0
+                    Farm.HitsSinceRefill, Farm.BladeGraceUntil = 0, 0
                 end
                 local speed = tonumber(Config.FlySpeed) or 600
 
@@ -3187,7 +3317,7 @@ local function buildRuntime(S)
                             local okQ = quickBladeReload()
                             lastRefill = os.clock()
                             since = nil
-                            if not okQ then Farm.QuickFailed = os.clock() + 20 end
+                            if not okQ then Farm.QuickFailed = os.clock() + (isMobile and 8 or 20) end
                             return
                         end
                     end
@@ -3282,6 +3412,12 @@ local function buildRuntime(S)
         while S.ui.gui and S.ui.gui.Parent do
             task.wait(0.1)
             if not Alive() then break end
+            local rf = RT.refillsLeft()
+            if Farm.LastRefills ~= nil and rf ~= nil and rf < Farm.LastRefills then
+                Farm.HitsSinceRefill = 0
+                Farm.BladeGraceUntil = os.clock() + 3
+            end
+            if rf ~= nil then Farm.LastRefills = rf end
             local low = RT.bladesLow() == true
             if low then
                 emptyStart = emptyStart or os.clock()
@@ -4387,6 +4523,7 @@ local function buildTabs(S)
                 "Seg: " .. tostring(seg) .. " · Rel: " .. tostring(rel) ..
                 " · Refills: " .. tostring(RT.refillsLeft() or "?") ..
                 " · Umbral: " .. tostring(Config.RefillAtBlades) ..
+                " · Golpes: " .. tostring(S.Farm.HitsSinceRefill) ..
                 " · SinCargas: " .. tostring(S.Farm.NoRefills) ..
                 " · Lock: " .. tostring(S.Farm.LockKind) ..
                 " · Quedan: " .. string.format("%.1f", (S.Farm.LockUntil or 0) - os.clock()) ..
@@ -4510,6 +4647,7 @@ local function buildTabs(S)
                 "refillbtn=" .. tostring(RT.findRefillButton and RT.findRefillButton() ~= nil),
                 "refillpos=" .. tostring(Config.RefillPosX) .. "x" .. tostring(Config.RefillPosY),
                 "refillat=" .. tostring(Config.RefillAtBlades),
+                "hits=" .. tostring(S.Farm.HitsSinceRefill),
                 "lock=" .. tostring(S.Farm.LockKind),
                 "hardmove=" .. tostring(S.Farm.HardMove),
                 "flyheight=" .. tostring(Config.FlyHeight),
@@ -4990,8 +5128,8 @@ local function boot(S)
     if startTab then S.selectTab(startTab) end
     if S.syncMobile then S.syncMobile() end
 
-    S.notify("CASPER HUB PREMIUM v15.10", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
-    print("[CASPER HUB PREMIUM v15.10] Cargado con éxito.")
+    S.notify("CASPER HUB PREMIUM v15.11", isMobile and "Interfaz lista · botón flotante para abrir" or ("Interfaz lista · " .. Config.Keybind), 4)
+    print("[CASPER HUB PREMIUM v15.11] Cargado con éxito.")
 end
 
 -- ============================================================
